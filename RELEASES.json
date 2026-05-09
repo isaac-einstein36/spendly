@@ -6,9 +6,10 @@
     "notes": [
       "First-run onboarding with sample data and CSV import shortcut",
       "Bulk export/import categories & budgets via CSV",
-      "Quick-add form layout fixed",
+      "Quick-add form layout fixed — $ no longer overlaps amount",
       "Google Script section removed — email backup simplified",
-      "GitHub Pages support for one-tap updates"
+      "GitHub Pages support for one-tap updates",
+      "Version number display fixed"
     ]
   },
   {
@@ -17,9 +18,9 @@
     "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/archive/spendly-v14.html",
     "notes": [
       "Software update system with App Store-style changelog banner",
-      "Version history with one-tap revert to any older version",
+      "Version history with one-tap revert to any version",
       "GitHub Pages hosting support for seamless updates",
-      "PWA manifest for Add to Home Screen"
+      "PWA manifest for Add to Home Screen on iPhone and Mac"
     ]
   },
   {
@@ -32,35 +33,34 @@
       "Calendar desktop click fixed",
       "Make Recurring available when editing existing charges",
       "Recurring charge frequency — monthly, quarterly, annual",
-      "Tracking Start Date setting for accurate averages",
+      "Tracking Start Date for accurate averages",
       "Improved projected year-end formula"
     ]
   },
   {
     "version": "1.12.0",
     "date": "2026-05-05",
-    "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/archive/spendly-v12.html",
     "notes": [
       "Subcategory breakdown in Annual overview",
       "Projected annual shows monthly equivalent",
       "Annual chart simplified to Actual vs Budget",
       "Budget total calculation bug fixed"
-    ]
+    ],
+    "_note": "No url — predates update system. Cannot be installed from within the app."
   },
   {
     "version": "1.11.0",
     "date": "2026-05-04",
-    "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/archive/spendly-v11.html",
     "notes": [
       "Today button on Overview and Calendar",
       "Email backup via native Mail app",
       "GitHub sync merges categories and budgets across devices"
-    ]
+    ],
+    "_note": "No url — predates update system."
   },
   {
     "version": "1.10.0",
     "date": "2026-05-03",
-    "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/archive/spendly-v10.html",
     "notes": [
       "Recurring charges with auto-post",
       "Swipe left to delete charges",
@@ -69,35 +69,36 @@
       "Quick-add shortcut",
       "Stacked bar chart toggle",
       "Emoji picker for categories"
-    ]
+    ],
+    "_note": "No url — predates update system."
   },
   {
     "version": "1.9.0",
     "date": "2026-05-02",
-    "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/archive/spendly-v9.html",
     "notes": [
       "Copy CSV to clipboard in one tap",
       "Email backup opens native Mail app"
-    ]
+    ],
+    "_note": "No url — predates update system."
   },
   {
     "version": "1.8.0",
     "date": "2026-05-01",
-    "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/archive/spendly-v8.html",
     "notes": [
       "Today button bug fixed on Overview",
       "GitHub sync merges categories across devices",
       "Configurable backup email address"
-    ]
+    ],
+    "_note": "No url — predates update system."
   },
   {
     "version": "1.6.0",
     "date": "2026-04-30",
-    "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/archive/spendly-v6.html",
     "notes": [
       "GitHub Gist sync between iPhone and Mac",
       "Sync button in header",
       "Pull, push, and merge sync modes"
-    ]
+    ],
+    "_note": "No url — predates update system."
   }
 ]
