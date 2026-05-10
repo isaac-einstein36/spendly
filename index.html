@@ -670,6 +670,17 @@ input,select,textarea{font-family:inherit}
 .update-btn-install{flex:1;padding:9px;border-radius:10px;background:var(--blue);color:#fff;font-size:13px;font-weight:700;border:none;cursor:pointer;}
 .update-btn-later{padding:9px 14px;border-radius:10px;background:var(--bg);color:var(--t2);font-size:13px;font-weight:600;border:none;cursor:pointer;}
 .update-btn-history{padding:9px 10px;border-radius:10px;background:var(--bg);color:var(--t3);font-size:12px;font-weight:600;border:none;cursor:pointer;}
+/* ── Update available dot (settings row) ── */
+.upd-dot{
+  width:9px;height:9px;border-radius:50%;
+  background:var(--red);flex-shrink:0;
+  box-shadow:0 0 0 2px var(--surface);
+}
+.upd-dot-wrap{position:relative;display:inline-flex;}
+.upd-dot-wrap .upd-dot{
+  position:absolute;top:-2px;right:-2px;
+  width:8px;height:8px;
+}
 </style>
 </head>
 <body>
@@ -912,19 +923,26 @@ const GH = {
 const Updates = {
   // Point this at YOUR public GitHub repo raw URL after setup
   // e.g. 'https://raw.githubusercontent.com/yourusername/spendly/main/RELEASES.json'
-  RELEASES_URL: DB.get('updatesUrl', ''),
+  RELEASES_URL: 'https://raw.githubusercontent.com/isaac-einstein36/spendly/main/RELEASES.json',
 
   async check() {
-    const url = this.RELEASES_URL || DB.get('updatesUrl', '');
+    const url = DB.get('updatesUrl', '') || this.RELEASES_URL;
     if (!url) return null;
     try {
-      const res = await fetch(url + '?t=' + Date.now()); // bust cache
+      const res = await fetch(url + '?t=' + Date.now());
       if (!res.ok) return null;
       const releases = await res.json();
       if (!Array.isArray(releases) || !releases.length) return null;
-      // Releases sorted newest-first
       const latest = releases[0];
-      if (this._isNewer(latest.version, CURRENT_VERSION)) return { latest, releases };
+      if (this._isNewer(latest.version, CURRENT_VERSION)) {
+        // Cache the available version so badge shows even before check completes
+        DB.set('updateAvailable', latest.version);
+        App._refreshUpdateBadge(latest.version);
+        return { latest, releases };
+      }
+      // No update — clear any stale cache
+      DB.set('updateAvailable', null);
+      App._refreshUpdateBadge(null);
       return null;
     } catch { return null; }
   },
@@ -960,6 +978,7 @@ const Updates = {
       a.click();
       URL.revokeObjectURL(a.href);
       DB.set('pendingUpdateNote', `Updated to ${release.version}: ${release.notes[0]||''}`);
+      DB.set('updateAvailable', null);
       document.getElementById('update-banner').style.display = 'none';
       App.toast('✅ spendly.html downloaded — replace your saved file to update!');
     } catch(e) {
@@ -979,6 +998,7 @@ const Updates = {
         await Promise.all(regs.map(r => r.unregister()));
       }
       DB.set('pendingUpdateNote', `Updated to ${release.version}: ${release.notes[0]||''}`);
+      DB.set('updateAvailable', null);
       // Hard reload bypassing cache
       location.href = location.href.split('?')[0] + '?v=' + release.version;
     } catch(e) {
@@ -1139,9 +1159,36 @@ const App = {
 
   saveCats(v)      { DB.set('cats', v);      this._scheduleSync(); },
   saveBudgets(v)   { DB.set('budgets', v);   this._scheduleSync(); },
-  saveTxs(v)       { DB.set('txs', v);       this._scheduleSync(); },
+  saveTxs(v)       { DB.set('txs', v);       this._scheduleSync(); this._triggerUpdateCheck(); },
   saveRecurring(v) { DB.set('recurring', v); this._scheduleSync(); },
   saveRollover(v)  { DB.set('rollover', v);  this._scheduleSync(); },
+
+  // Check for updates (debounced — at most once per session after first check)
+  _updateCheckDone: false,
+  _triggerUpdateCheck() {
+    if (this._updateCheckDone) return;
+    this._updateCheckDone = true;
+    Updates.check().then(result => { if (result) Updates.showBanner(result.latest, result.releases); });
+  },
+
+  // Refresh the red dot in the settings row (called after check completes)
+  _refreshUpdateBadge(version) {
+    // Update the icon in the settings row if it's currently visible
+    const icon = document.getElementById('s-updates-icon');
+    const sub  = document.getElementById('s-updates-sub');
+    if (icon) {
+      icon.innerHTML = version
+        ? `<span class="upd-dot-wrap">🔄<span class="upd-dot"></span></span>`
+        : '🔄';
+    }
+    if (sub) {
+      sub.textContent = version
+        ? `Update available: v${version}`
+        : `Checking from isaac-einstein36/spendly · v${CURRENT_VERSION}`;
+      if (sub && version) sub.style.color = 'var(--red)';
+      else if (sub) sub.style.color = '';
+    }
+  },
 
   addTx(data) {
     const txs = this.txs();
@@ -2399,10 +2446,12 @@ const App = {
       <div class="section-lbl">Software Updates</div>
       <div class="group" style="margin-bottom:8px;">
         <div class="set-item" id="s-updates">
-          <div class="set-icon" style="background:var(--blue);">🔄</div>
+          <div class="set-icon" style="background:var(--blue);" id="s-updates-icon">
+            ${DB.get('updateAvailable',null) ? `<span class="upd-dot-wrap">🔄<span class="upd-dot"></span></span>` : '🔄'}
+          </div>
           <div style="flex:1;">
             <div class="set-name">App Updates</div>
-            <div style="font-size:12px;color:var(--t2);margin-top:1px;" id="s-updates-sub">${DB.get('updatesUrl','') ? `Checking from repo · v${CURRENT_VERSION}` : `Not configured · v${CURRENT_VERSION}`}</div>
+            <div style="font-size:12px;color:${DB.get('updateAvailable',null)?'var(--red)':'var(--t2)'};margin-top:1px;" id="s-updates-sub">${DB.get('updateAvailable',null) ? `Update available: v${DB.get('updateAvailable',null)}` : `Checking from isaac-einstein36/spendly · v${CURRENT_VERSION}`}</div>
           </div>
           <span style="color:var(--t3);font-size:12px;">›</span>
         </div>
@@ -3038,14 +3087,22 @@ const App = {
         </div>
       </div>
 
-      <div class="section-lbl">RELEASES.json URL</div>
+      <div class="section-lbl">Update source</div>
+      <div class="group" style="margin-bottom:16px;">
+        <div class="grow" style="flex-direction:column;align-items:flex-start;gap:4px;padding:12px 14px;">
+          <div style="font-size:13px;font-weight:700;">isaac-einstein36/spendly</div>
+          <div style="font-size:12px;color:var(--t2);">Built-in · updates automatically</div>
+        </div>
+      </div>
+
+      <div class="section-lbl">Custom override <span style="font-size:11px;color:var(--t3);font-weight:400;">(optional — leave blank to use default)</span></div>
       <div style="padding:0 16px;">
         <div class="ff" style="margin-bottom:8px;">
-          <label class="fl">Raw GitHub URL</label>
+          <label class="fl">Custom RELEASES.json URL</label>
           <input class="fi" id="upd-url-inp" type="url" inputmode="url" autocorrect="off" autocapitalize="off" spellcheck="false"
-            value="${curUrl}" placeholder="https://raw.githubusercontent.com/you/spendly/main/RELEASES.json">
+            value="${DB.get('updatesUrl','')}" placeholder="Leave blank to use built-in source">
         </div>
-        <button class="btn-full" id="upd-save-btn" style="margin-bottom:8px;">Save URL</button>
+        <button class="btn-full" id="upd-save-btn" style="margin-bottom:8px;">Save Override</button>
       </div>
 
       <div class="section-lbl" style="margin-top:8px;">Actions</div>
@@ -3087,8 +3144,7 @@ const App = {
 
     document.getElementById('upd-history').onclick = async () => {
       statusEl.textContent = '⏳ Loading…';
-      const url = DB.get('updatesUrl', '');
-      if (!url) { statusEl.textContent = '⚠️ Set a RELEASES.json URL first.'; return; }
+      const url = DB.get('updatesUrl', '') || Updates.RELEASES_URL;
       try {
         const res = await fetch(url + '?t=' + Date.now());
         const releases = await res.json();
