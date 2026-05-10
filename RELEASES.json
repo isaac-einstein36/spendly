@@ -1,5 +1,16 @@
 [
   {
+  "version": "1.17.1",
+  "date": "2026-05-10",
+  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
+  "notes": [
+    "Update source hardcoded — no setup required for new users",
+    "Red dot badge on Settings → App Updates row when an update is available",
+    "Update check also runs after each charge save, once per session",
+    "Badge appears instantly from cache — no network wait on Settings open"
+    ]
+  },
+  {
   "version": "1.17.0",
   "date": "2026-05-10",
   "url": "https://raw.githubusercontent.com/YOURUSERNAME/spendly/main/index.html",
