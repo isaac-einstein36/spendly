@@ -1,8 +1,19 @@
 [
   {
+  "version": "1.16.0",
+  "date": "2026-05-09",
+  "url": "https://raw.githubusercontent.com/YOURUSERNAME/spendly/main/index.html",
+  "notes": [
+    "Start Fresh button in Settings — clears all data and returns to the welcome screen (GitHub credentials kept)",
+    "Clear All Categories button in the category manager for bulk reset",
+    "Category CSV import now works at any time, not just on first setup",
+    "Import confirm message clarifies that existing charges are preserved",
+    "Clear All Charges now shows a note that categories and budgets are kept"
+    ]
+  },
+  {
     "version": "1.15.0",
     "date": "2026-05-08",
-    "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
     "notes": [
       "First-run onboarding with sample data and CSV import shortcut",
       "Bulk export/import categories & budgets via CSV",
@@ -15,7 +26,6 @@
   {
     "version": "1.14.0",
     "date": "2026-05-07",
-    "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/archive/spendly-v14.html",
     "notes": [
       "Software update system with App Store-style changelog banner",
       "Version history with one-tap revert to any version",
@@ -26,7 +36,6 @@
   {
     "version": "1.13.0",
     "date": "2026-05-06",
-    "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/archive/spendly-v13.html",
     "notes": [
       "Arithmetic in amount fields — type 45+12 or 120/3",
       "Calendar category color dots toggle",
