@@ -1,5 +1,14 @@
 [
   {
+  "version": "1.17.0",
+  "date": "2026-05-10",
+  "url": "https://raw.githubusercontent.com/YOURUSERNAME/spendly/main/index.html",
+  "notes": [
+    "Test update to verify the update system is working",
+    "Version number now visible in Settings footer"
+    ]
+  },
+  {
   "version": "1.16.0",
   "date": "2026-05-09",
   "url": "https://raw.githubusercontent.com/YOURUSERNAME/spendly/main/index.html",
