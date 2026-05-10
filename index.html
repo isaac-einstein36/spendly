@@ -740,7 +740,7 @@ input,select,textarea{font-family:inherit}
 // ============================================================
 
 // ── Version ──────────────────────────────────────────────────
-const CURRENT_VERSION = '1.15.0';
+const CURRENT_VERSION = '1.16.0';
 // This constant is the only thing that changes between releases.
 // The update checker compares it against RELEASES.json in your repo.
 
@@ -1028,24 +1028,50 @@ const Updates = {
   },
 
   showHistory(releases) {
+    const hosted = this.isHosted();
     const rows = releases.map(r => {
       const isCurrent = r.version === CURRENT_VERSION;
       const isNewer   = this._isNewer(r.version, CURRENT_VERSION);
+      const isOlder   = !isCurrent && !isNewer;
+      const hasUrl    = !!r.url;
       const notesList = r.notes.map(n=>`<li>${n}</li>`).join('');
+
+      let actionBtn = '';
+      if (!isCurrent && hasUrl) {
+        if (isNewer) {
+          // Installing a newer version always works
+          actionBtn = `<button class="update-btn-later" style="font-size:12px;padding:6px 14px;background:rgba(0,122,255,.1);color:var(--blue);font-weight:700;" data-rel='${JSON.stringify(r)}'>⬆ Install ${r.version}</button>`;
+        } else if (isOlder && !hosted) {
+          // Reverting only works when running as a local file
+          actionBtn = `<button class="update-btn-later" style="font-size:12px;padding:6px 14px;" data-rel='${JSON.stringify(r)}'>⏪ Download ${r.version}</button>`;
+        } else if (isOlder && hosted) {
+          // On GitHub Pages, reverting requires a GitHub change — explain honestly
+          actionBtn = `<div style="font-size:11px;color:var(--t3);padding:4px 0;line-height:1.5;">To revert to this version on GitHub Pages, replace <code style="background:var(--bg);padding:1px 4px;border-radius:3px;">index.html</code> in your repo with the archive file.</div>`;
+        }
+      }
+
       return `<div style="padding:14px 0;border-bottom:.5px solid var(--border);">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-          ${isCurrent ? `<span class="update-badge" style="background:var(--green);">CURRENT</span>` :
-            isNewer   ? `<span class="update-badge">NEWER</span>` :
-                        `<span class="update-badge" style="background:var(--t3);">OLDER</span>`}
-          <span style="font-size:14px;font-weight:700;">${r.version}</span>
+          ${isCurrent
+            ? `<span class="update-badge" style="background:var(--green);">INSTALLED</span>`
+            : isNewer
+            ? `<span class="update-badge">NEWER</span>`
+            : `<span class="update-badge" style="background:var(--t3);">v${r.version}</span>`}
+          <span style="font-size:14px;font-weight:700;">${isCurrent || isNewer ? r.version : ''}</span>
           <span style="font-size:11px;color:var(--t3);margin-left:auto;">${r.date}</span>
         </div>
         <ul style="font-size:12px;color:var(--t2);line-height:1.6;margin:0 0 8px 16px;padding:0;">${notesList}</ul>
-        ${!isCurrent ? `<button class="update-btn-later" style="font-size:12px;padding:6px 14px;" data-rel='${JSON.stringify(r)}'>
-          ${isNewer ? '⬇ Install' : '⏪ Revert to this version'}
-        </button>` : ''}
+        ${actionBtn}
       </div>`;
     }).join('');
+
+    const hostedNote = hosted
+      ? `<div style="background:rgba(0,122,255,.06);border:1px solid rgba(0,122,255,.15);border-radius:var(--r);padding:12px 14px;margin-bottom:12px;font-size:12px;color:var(--t2);line-height:1.5;">
+          Updates install instantly with one tap. Reverting to an older version requires replacing <code style="background:var(--bg);padding:1px 4px;border-radius:3px;">index.html</code> in your GitHub repo with the archive file — it can't be done from within the app on a hosted page.
+         </div>`
+      : `<div style="background:rgba(0,122,255,.06);border:1px solid rgba(0,122,255,.15);border-radius:var(--r);padding:12px 14px;margin-bottom:12px;font-size:12px;color:var(--t2);line-height:1.5;">
+          Your data is never affected by switching versions — it lives in localStorage and your private Gist.
+         </div>`;
 
     const ov = App._overlay(`
       <div class="sheet-handle"></div>
@@ -1054,9 +1080,7 @@ const Updates = {
         <button class="sheet-close" id="vh-x">✕</button>
       </div>
       <div class="sheet-body">
-        <div style="background:rgba(0,122,255,.06);border:1px solid rgba(0,122,255,.15);border-radius:var(--r);padding:12px 14px;margin-bottom:12px;font-size:12px;color:var(--t2);line-height:1.5;">
-          Your data lives in the browser and your private Gist — it is <strong>never affected</strong> by installing or reverting a version. You can freely switch between versions.
-        </div>
+        ${hostedNote}
         ${rows}
         <div style="height:8px;"></div>
       </div>`);
@@ -2386,7 +2410,20 @@ const App = {
 
       <div class="section-lbl">Danger Zone</div>
       <div class="group">
-        <div class="set-item" id="s-clear"><div class="set-icon" style="background:var(--red);">🗑</div><span class="set-name" style="color:var(--red);">Clear All Charges</span></div>
+        <div class="set-item" id="s-restart" style="cursor:pointer;">
+          <div class="set-icon" style="background:var(--indigo);">🔄</div>
+          <div style="flex:1;">
+            <div class="set-name">Start Fresh / Restart</div>
+            <div style="font-size:12px;color:var(--t2);">Clear all data and show welcome screen</div>
+          </div>
+        </div>
+        <div class="set-item" id="s-clear" style="cursor:pointer;">
+          <div class="set-icon" style="background:var(--red);">🗑</div>
+          <div style="flex:1;">
+            <div class="set-name" style="color:var(--red);">Clear All Charges</div>
+            <div style="font-size:12px;color:var(--t2);">Keeps categories &amp; budgets</div>
+          </div>
+        </div>
       </div>
       <div style="text-align:center;padding:24px 16px 8px;color:var(--t3);font-size:12px;">Spendly · Synced privately via GitHub Gist</div>
     </div>`;
@@ -2428,8 +2465,22 @@ const App = {
 
     document.getElementById('s-repair').onclick = ()=>this._repairDates();
     document.getElementById('s-updates').onclick = ()=>this._buildUpdatesSettings();
+    document.getElementById('s-restart').onclick = ()=>{
+      if(confirm('This will clear ALL data (charges, categories, budgets, recurring) and show the welcome screen. Your GitHub sync credentials are kept.\n\nContinue?')) {
+        DB.set('txs',[]);
+        DB.set('cats', DEFAULT_CATS);
+        DB.set('budgets', {});
+        DB.set('recurring', []);
+        DB.set('rollover', {});
+        DB.set('startDate', null);
+        DB.set('onboardingDone', false);
+        DB.set('lastBackup', null);
+        this.toast('All data cleared');
+        setTimeout(() => this._showOnboarding(), 300);
+      }
+    };
     document.getElementById('s-clear').onclick = ()=>{
-      if(confirm('Delete ALL charges? This cannot be undone.')) {
+      if(confirm('Delete ALL charges? Categories and budgets are kept. This cannot be undone.')) {
         DB.set('txs',[]);this.toast('All charges deleted');this._buildSettings();
       }
     };
@@ -3067,13 +3118,14 @@ const App = {
         <button class="hdr-btn" id="cat-back">‹</button>
         <div class="view-title" style="padding:0;">Categories</div>
       </div>
-      <div style="display:flex;gap:8px;padding:0 16px 12px;">
-        <button id="cat-export-btn" style="flex:1;padding:9px;border-radius:var(--r-sm);background:rgba(52,199,89,.1);color:var(--green);font-size:13px;font-weight:700;border:none;cursor:pointer;">📤 Export CSV</button>
-        <button id="cat-import-btn" style="flex:1;padding:9px;border-radius:var(--r-sm);background:rgba(0,122,255,.1);color:var(--blue);font-size:13px;font-weight:700;border:none;cursor:pointer;">📥 Import CSV</button>
+      <div style="display:flex;gap:8px;padding:0 16px 8px;flex-wrap:wrap;">
+        <button id="cat-export-btn" style="flex:1;padding:9px;border-radius:var(--r-sm);background:rgba(52,199,89,.1);color:var(--green);font-size:13px;font-weight:700;border:none;cursor:pointer;min-width:100px;">📤 Export CSV</button>
+        <button id="cat-import-btn" style="flex:1;padding:9px;border-radius:var(--r-sm);background:rgba(0,122,255,.1);color:var(--blue);font-size:13px;font-weight:700;border:none;cursor:pointer;min-width:100px;">📥 Import CSV</button>
+        <button id="cat-clear-btn" style="flex:1;padding:9px;border-radius:var(--r-sm);background:rgba(255,59,48,.08);color:var(--red);font-size:13px;font-weight:700;border:none;cursor:pointer;min-width:100px;">🗑 Clear All</button>
         <input type="file" id="cat-csv-input" accept=".csv" style="display:none;">
       </div>
       <div style="margin:0 16px 12px;background:rgba(0,122,255,.06);border:1px solid rgba(0,122,255,.15);border-radius:var(--r);padding:10px 12px;font-size:12px;color:var(--t2);">
-        Export to CSV to bulk-edit categories &amp; budgets in any spreadsheet app, then import back. Great for initial setup.
+        <strong>CSV columns:</strong> Name, Color, Emoji, Subcategories (semicolon-separated), MonthlyBudget — export first to see the format.
       </div>
       <div class="group">${rows}</div>
       <div style="padding:0 16px;"><button class="btn-full" id="add-cat-btn">+ Add Category</button></div>
@@ -3081,6 +3133,14 @@ const App = {
     </div>`;
     document.getElementById('cat-back').onclick=()=>this._buildSettings();
     document.getElementById('add-cat-btn').onclick=()=>this._openCatSheet({name:'',color:COLORS[0],emoji:'💳',subcategories:[]},true,COLORS);
+
+    document.getElementById('cat-clear-btn').onclick = () => {
+      if (!confirm(`Remove all ${this.cats().length} categories and their budgets? Charges will keep their category names but the categories won't exist in the list.\n\nThis cannot be undone.`)) return;
+      this.saveCats([]);
+      this.saveBudgets({});
+      this.toast('All categories cleared');
+      this._buildCatManager();
+    };
 
     // Bulk CSV export: Name, Color, Emoji, Subcategories, MonthlyBudget
     document.getElementById('cat-export-btn').onclick = () => {
@@ -3117,7 +3177,7 @@ const App = {
             if (budget) newBudgets[name] = parseFloat(budget)||0;
           });
           if (!newCats.length) { this.toast('No categories found in CSV','error'); return; }
-          if (!confirm(`Import ${newCats.length} categories? This replaces your current list.`)) return;
+          if (!confirm(`Import ${newCats.length} categories? This replaces your current list. Your existing charges are kept.`)) return;
           this.saveCats(newCats); this.saveBudgets(newBudgets);
           this.toast(`${newCats.length} categories imported ✓`);
           this._buildCatManager();
