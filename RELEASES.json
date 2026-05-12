@@ -1,5 +1,25 @@
 [
   {
+  "version": "1.19.0",
+  "date": "2026-05-10",
+  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
+  "notes": [
+    "Dark mode — Auto, Light, or Dark in Settings",
+    "Settings reorganized — shorter, fewer sections, logical grouping",
+    "Backup overdue banner removed entirely",
+    "Import & Export section is now a compact grid with no surrounding clutter"
+    ]
+  },
+  {
+  "version": "1.18.0",
+  "date": "2026-05-10",
+  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
+  "notes": [
+    "Backup reminder now off by default — opt-in in Settings if wanted",
+    "Backup overdue banner no longer appears for new accounts"
+    ]
+  },
+  {
   "version": "1.17.1",
   "date": "2026-05-10",
   "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
