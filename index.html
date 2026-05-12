@@ -52,12 +52,12 @@
 
 /* ── Dark mode variables ── */
 [data-theme="dark"] {
-  --bg:       #000000;
+  --bg:       #111111;
   --surface:  #1c1c1e;
   --surface2: #2c2c2e;
   --border:   rgba(255,255,255,0.1);
-  --border2:  rgba(255,255,255,0.18);
-  --t1: #ffffff;
+  --border2:  rgba(255,255,255,0.16);
+  --t1: #f2f2f7;
   --t2: #aeaeb2;
   --t3: #636366;
 }
@@ -65,12 +65,12 @@
 /* System preference fallback (when theme is 'auto' or not set) */
 @media (prefers-color-scheme: dark) {
   [data-theme="auto"], :root:not([data-theme]) {
-    --bg:       #000000;
+    --bg:       #111111;
     --surface:  #1c1c1e;
     --surface2: #2c2c2e;
     --border:   rgba(255,255,255,0.1);
-    --border2:  rgba(255,255,255,0.18);
-    --t1: #ffffff;
+    --border2:  rgba(255,255,255,0.16);
+    --t1: #f2f2f7;
     --t2: #aeaeb2;
     --t3: #636366;
   }
@@ -116,7 +116,7 @@ input,select,textarea{font-family:inherit}
   position:fixed;top:0;left:0;right:0;
   height:calc(var(--hdr-h) + var(--safe-t));
   padding:var(--safe-t) 16px 0;
-  background:rgba(255,255,255,.92);
+  background:var(--surface);
   backdrop-filter:saturate(180%) blur(20px);
   -webkit-backdrop-filter:saturate(180%) blur(20px);
   border-bottom:.5px solid var(--border);
@@ -143,7 +143,7 @@ input,select,textarea{font-family:inherit}
   position:fixed;bottom:0;left:0;right:0;
   height:calc(var(--nav-h) + var(--safe-b));
   padding-bottom:var(--safe-b);
-  background:rgba(255,255,255,.92);
+  background:var(--surface);
   backdrop-filter:saturate(180%) blur(20px);
   -webkit-backdrop-filter:saturate(180%) blur(20px);
   border-top:.5px solid var(--border);
@@ -703,10 +703,15 @@ input,select,textarea{font-family:inherit}
   box-shadow:0 0 0 2px var(--surface);
 }
 .upd-dot-wrap{position:relative;display:inline-flex;}
-.upd-dot-wrap .upd-dot{
-  position:absolute;top:-2px;right:-2px;
-  width:8px;height:8px;
+/* ── Nav update badge ── */
+.nav-badge{
+  position:absolute;top:4px;right:calc(50% - 16px);
+  width:8px;height:8px;border-radius:50%;
+  background:var(--red);border:2px solid var(--surface);
+  display:none;
 }
+.nav-badge.visible{display:block;}
+.nav-btn{position:relative;}
 </style>
 </head>
 <body>
@@ -759,6 +764,7 @@ input,select,textarea{font-family:inherit}
       <span>Calendar</span>
     </button>
     <button class="nav-btn" data-view="settings-view">
+      <span class="nav-badge" id="settings-update-badge"></span>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
       <span>Settings</span>
     </button>
@@ -777,7 +783,7 @@ input,select,textarea{font-family:inherit}
 // ============================================================
 
 // ── Version ──────────────────────────────────────────────────
-const CURRENT_VERSION = '1.19.0';
+const CURRENT_VERSION = '1.20.0';
 
 // ── Theme — apply immediately to avoid flash of wrong theme ──
 (function() {
@@ -1051,32 +1057,31 @@ const Updates = {
     const snoozedUntil = DB.get('updateSnoozed', null);
     if (snoozedUntil && new Date() < new Date(snoozedUntil)) return;
 
-    const notesList = latest.notes.map(n => `<li>${n}</li>`).join('');
+    const notesList = latest.notes.map(n => `<li style="margin-bottom:3px;">${n}</li>`).join('');
     const installLabel = this.isHosted() ? '⬆ Update Now' : '⬇ Download Update';
     const banner = document.getElementById('update-banner');
     banner.style.display = '';
     banner.innerHTML = `<div class="update-banner">
       <div class="update-banner-hdr">
-        <span class="update-badge">UPDATE</span>
+        <span class="update-badge">NEW VERSION</span>
         <span class="update-version">Spendly ${latest.version}</span>
         <span class="update-date">${latest.date}</span>
       </div>
-      <ul class="update-notes">${notesList}</ul>
+      <ul class="update-notes" style="padding-left:18px;margin-bottom:12px;">${notesList}</ul>
       <div class="update-actions">
-        <button class="update-btn-install" id="update-install-btn">${installLabel}</button>
-        <button class="update-btn-history" id="update-history-btn" title="Version history">📋</button>
-        <button class="update-btn-later" id="update-later-btn">Later</button>
+        <button class="update-btn-install" id="update-install-btn" style="font-size:15px;padding:11px 0;">${installLabel}</button>
+        <button class="update-btn-later" id="update-whats-new-btn" title="Full changelog" style="font-size:12px;padding:11px 12px;color:var(--blue);background:rgba(0,122,255,.08);">What's new ›</button>
+        <button class="update-btn-later" id="update-later-btn" style="font-size:12px;padding:11px 10px;">Later</button>
       </div>
     </div>`;
 
     document.getElementById('update-install-btn').onclick = () => this.install(latest);
-    document.getElementById('update-later-btn').onclick   = () => {
-      // Snooze for 3 days
+    document.getElementById('update-later-btn').onclick = () => {
       const snooze = new Date(); snooze.setDate(snooze.getDate() + 3);
       DB.set('updateSnoozed', snooze.toISOString());
       banner.style.display = 'none';
     };
-    document.getElementById('update-history-btn').onclick = () => this.showHistory(releases);
+    document.getElementById('update-whats-new-btn').onclick = () => this.showHistory(releases);
   },
 
   showHistory(releases) {
@@ -1203,9 +1208,13 @@ const App = {
     Updates.check().then(result => { if (result) Updates.showBanner(result.latest, result.releases); });
   },
 
-  // Refresh the red dot in the settings row (called after check completes)
+  // Refresh the red dot in the settings row AND the nav badge
   _refreshUpdateBadge(version) {
-    // Update the icon in the settings row if it's currently visible
+    // Nav badge on settings gear icon
+    const navBadge = document.getElementById('settings-update-badge');
+    if (navBadge) navBadge.classList.toggle('visible', !!version);
+
+    // Settings row icon + subtitle
     const icon = document.getElementById('s-updates-icon');
     const sub  = document.getElementById('s-updates-sub');
     if (icon) {
@@ -1216,9 +1225,8 @@ const App = {
     if (sub) {
       sub.textContent = version
         ? `Update available: v${version}`
-        : `Checking from isaac-einstein36/spendly · v${CURRENT_VERSION}`;
-      if (sub && version) sub.style.color = 'var(--red)';
-      else if (sub) sub.style.color = '';
+        : `v${CURRENT_VERSION} · isaac-einstein36/spendly`;
+      sub.style.color = version ? 'var(--red)' : '';
     }
   },
 
@@ -1272,6 +1280,9 @@ const App = {
       const note = DB.get('pendingUpdateNote', null);
       if (note) { setTimeout(() => this.toast('🎉 ' + note, 'ok'), 800); DB.set('pendingUpdateNote', null); }
       Updates.check().then(result => { if (result) Updates.showBanner(result.latest, result.releases); });
+      // Apply cached update badge immediately (before async check completes)
+      const cachedUpdate = DB.get('updateAvailable', null);
+      if (cachedUpdate) this._refreshUpdateBadge(cachedUpdate);
       // First-run onboarding
       if (!DB.get('onboardingDone', false)) {
         this._showOnboarding();
