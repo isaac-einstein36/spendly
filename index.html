@@ -50,6 +50,32 @@
   --r-xs: 7px;
 }
 
+/* ── Dark mode variables ── */
+[data-theme="dark"] {
+  --bg:       #000000;
+  --surface:  #1c1c1e;
+  --surface2: #2c2c2e;
+  --border:   rgba(255,255,255,0.1);
+  --border2:  rgba(255,255,255,0.18);
+  --t1: #ffffff;
+  --t2: #aeaeb2;
+  --t3: #636366;
+}
+
+/* System preference fallback (when theme is 'auto' or not set) */
+@media (prefers-color-scheme: dark) {
+  [data-theme="auto"], :root:not([data-theme]) {
+    --bg:       #000000;
+    --surface:  #1c1c1e;
+    --surface2: #2c2c2e;
+    --border:   rgba(255,255,255,0.1);
+    --border2:  rgba(255,255,255,0.18);
+    --t1: #ffffff;
+    --t2: #aeaeb2;
+    --t3: #636366;
+  }
+}
+
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html{font-size:16px;-webkit-text-size-adjust:100%;height:100%}
 body{
@@ -63,7 +89,7 @@ input,select,textarea{font-family:inherit}
 
 /* ── Splash ── */
 #splash{
-  position:fixed;inset:0;background:#fff;
+  position:fixed;inset:0;background:var(--surface);
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:12px;z-index:9999;transition:opacity 0.35s ease;
 }
@@ -751,7 +777,13 @@ input,select,textarea{font-family:inherit}
 // ============================================================
 
 // ── Version ──────────────────────────────────────────────────
-const CURRENT_VERSION = '1.17.0';
+const CURRENT_VERSION = '1.19.0';
+
+// ── Theme — apply immediately to avoid flash of wrong theme ──
+(function() {
+  const t = localStorage.getItem('theme') || 'auto';
+  document.documentElement.setAttribute('data-theme', t);
+})();
 // This constant is the only thing that changes between releases.
 // The update checker compares it against RELEASES.json in your repo.
 
@@ -1299,7 +1331,7 @@ const App = {
 
   // ── Monthly backup reminder ──────────────────────────────────
   _checkBackupReminder() {
-    if (!DB.get('remindBackup', true)) return;
+    if (!DB.get('remindBackup', false)) return;
     const now = new Date();
     const lastShown = DB.get('reminderLastShown', null);
     const thisMonth = `${now.getFullYear()}-${now.getMonth()}`;
@@ -2343,22 +2375,31 @@ const App = {
     const lastBackupStr = lastBackup
       ? new Date(lastBackup).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
       : 'Never';
-    const daysSince = lastBackup
-      ? Math.floor((Date.now()-new Date(lastBackup).getTime())/(1000*60*60*24))
-      : 999;
-    const backupWarn = daysSince > 30;
     const txCount = this.txs().length;
+    const theme = DB.get('theme','auto');
+    const themeLabel = {auto:'System default', light:'Light', dark:'Dark'}[theme] || 'System default';
+    const themeIcon  = {auto:'🌗', light:'☀️', dark:'🌙'}[theme] || '🌗';
 
     main.innerHTML=`<div class="view">
       <div class="view-title">Settings</div>
 
-      ${backupWarn ? `<div style="margin:0 16px 4px;background:rgba(255,149,0,.1);border:1px solid rgba(255,149,0,.25);border-radius:var(--r);padding:12px 14px;display:flex;align-items:center;gap:10px;">
-        <span style="font-size:20px;">⚠️</span>
-        <div>
-          <div style="font-size:14px;font-weight:600;color:var(--orange);">Backup overdue</div>
-          <div style="font-size:12px;color:var(--t2);margin-top:2px;">Last backup: ${lastBackupStr}. Export your data so it's safe.</div>
+      <div class="section-lbl">Appearance</div>
+      <div class="group">
+        <div class="set-item" id="s-theme">
+          <div class="set-icon" style="background:var(--indigo);">${themeIcon}</div>
+          <div style="flex:1;">
+            <div class="set-name">Color Mode</div>
+            <div style="font-size:12px;color:var(--t2);margin-top:1px;">${themeLabel}</div>
+          </div>
+          <div style="display:flex;gap:0;border:1px solid var(--border2);border-radius:8px;overflow:hidden;">
+            ${['auto','light','dark'].map(t=>`
+              <button class="theme-seg-btn ${theme===t?'active':''}" data-t="${t}"
+                style="padding:5px 10px;font-size:12px;font-weight:600;background:${theme===t?'var(--blue)':'transparent'};color:${theme===t?'#fff':'var(--t2)'};border:none;cursor:pointer;">
+                ${{auto:'Auto',light:'☀️',dark:'🌙'}[t]}
+              </button>`).join('')}
+          </div>
         </div>
-      </div>` : ''}
+      </div>
 
       <div class="section-lbl">Manage</div>
       <div class="group">
@@ -2369,12 +2410,12 @@ const App = {
           <div class="set-icon" style="background:var(--teal);">📅</div>
           <div style="flex:1;">
             <div class="set-name">Tracking Start Date</div>
-            <div style="font-size:12px;color:var(--t2);">${(() => { const d=DB.get('startDate',null); if(!d)return'Not set — using Jan 1'; const [y,m]=d.split('-'); return `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(m)-1]} ${y}`; })()}</div>
+            <div style="font-size:12px;color:var(--t2);">${(()=>{ const d=DB.get('startDate',null); if(!d)return'Not set — using Jan 1'; const [y,m]=d.split('-'); return `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(m)-1]} ${y}`; })()}</div>
           </div>
           <span style="color:var(--t3);font-size:12px;">›</span>
         </div>
         <div class="set-item" id="s-rollover">
-          <div class="set-icon" style="background:var(--orange, #F2A65A);">🔄</div>
+          <div class="set-icon" style="background:var(--orange);">🔄</div>
           <div style="flex:1;"><div class="set-name">Budget Rollover</div><div style="font-size:12px;color:var(--t2);">${DB.get('rolloverEnabled',false)?'On — surplus carries forward':'Off'}</div></div>
           <div id="rollover-toggle" style="width:44px;height:26px;border-radius:13px;background:${DB.get('rolloverEnabled',false)?'var(--green)':'rgba(120,120,128,.2)'};position:relative;transition:background .2s;flex-shrink:0;">
             <div style="width:22px;height:22px;border-radius:50%;background:#fff;position:absolute;top:2px;left:${DB.get('rolloverEnabled',false)?'20px':'2px'};transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.2);"></div>
@@ -2382,27 +2423,23 @@ const App = {
         </div>
       </div>
 
-      <div class="section-lbl">GitHub Sync</div>
+      <div class="section-lbl">Sync &amp; Backup</div>
       <div class="group" style="margin-bottom:8px;">
         <div class="set-item" id="s-gh-setup">
           <div class="set-icon" style="background:#24292e;">
             <svg viewBox="0 0 24 24" fill="#fff" width="18" height="18"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.2 11.38.6.11.82-.26.82-.58v-2.03c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49 1 .11-.78.42-1.3.76-1.6-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.13-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 3-.4c1.02.005 2.04.138 3 .4 2.28-1.55 3.29-1.23 3.29-1.23.66 1.66.25 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.48 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.83.58A12.003 12.003 0 0 0 24 12C24 5.37 18.63 0 12 0z"/></svg>
           </div>
-          <div style="flex:1;" id="gh-status-text">
+          <div style="flex:1;">
             <div class="set-name" id="gh-status-name">Connect GitHub</div>
-            <div style="font-size:12px;color:var(--t2);margin-top:1px;" id="gh-status-sub">Sync data between iPhone &amp; Mac</div>
+            <div style="font-size:12px;color:var(--t2);margin-top:1px;" id="gh-status-sub">Sync between iPhone &amp; Mac</div>
           </div>
           <span style="color:var(--t3);font-size:12px;">›</span>
         </div>
-      </div>
-
-      <div class="section-lbl">Backup &amp; Export</div>
-      <div class="group" style="margin-bottom:8px;">
         <div class="set-item" id="s-email">
           <div class="set-icon" style="background:#1c7ed6;">✉️</div>
           <div style="flex:1;">
             <div class="set-name">Email Backup</div>
-            <div style="font-size:12px;color:var(--t2);margin-top:1px;">To: ${DB.get('backupEmail','isaacsemail1234@gmail.com')}</div>
+            <div style="font-size:12px;color:var(--t2);margin-top:1px;">Copy CSV + open Mail · ${txCount} charges</div>
           </div>
           <span style="color:var(--t3);font-size:12px;">›</span>
         </div>
@@ -2410,15 +2447,16 @@ const App = {
           <div class="set-icon" style="background:var(--indigo);">🔔</div>
           <div style="flex:1;">
             <div class="set-name">Backup Reminders</div>
-            <div style="font-size:12px;color:var(--t2);margin-top:1px;" id="remind-status">${DB.get('remindBackup',true) ? 'On — shown on 1st of each month' : 'Off'}</div>
+            <div style="font-size:12px;color:var(--t2);margin-top:1px;">${DB.get('remindBackup',false)?'On':'Off'} · Last backup: ${lastBackupStr}</div>
           </div>
-          <div id="remind-toggle" style="width:44px;height:26px;border-radius:13px;background:${DB.get('remindBackup',true)?'var(--green)':'rgba(120,120,128,.2)'};position:relative;transition:background .2s;flex-shrink:0;">
-            <div style="width:22px;height:22px;border-radius:50%;background:#fff;position:absolute;top:2px;left:${DB.get('remindBackup',true)?'20px':'2px'};transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.2);"></div>
+          <div id="remind-toggle" style="width:44px;height:26px;border-radius:13px;background:${DB.get('remindBackup',false)?'var(--green)':'rgba(120,120,128,.2)'};position:relative;transition:background .2s;flex-shrink:0;">
+            <div style="width:22px;height:22px;border-radius:50%;background:#fff;position:absolute;top:2px;left:${DB.get('remindBackup',false)?'20px':'2px'};transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.2);"></div>
           </div>
         </div>
       </div>
 
-      <div class="imp-exp-grid">
+      <div class="section-lbl">Import &amp; Export</div>
+      <div class="imp-exp-grid" style="margin-bottom:8px;">
         <div class="ie-btn" id="exp-csv"><div class="ie-icon" style="background:rgba(52,199,89,.12);">📤</div><span>Export CSV</span></div>
         <div class="ie-btn" id="exp-xlsx"><div class="ie-icon" style="background:rgba(0,122,255,.1);">📊</div><span>Export XLSX</span></div>
         <div class="ie-btn" id="imp-csv"><div class="ie-icon" style="background:rgba(255,149,0,.1);">📥</div><span>Import CSV</span></div>
@@ -2426,24 +2464,7 @@ const App = {
       </div>
       <input type="file" id="csv-file-input" accept=".csv" class="hidden">
 
-      <div class="section-lbl">Data Safety</div>
-      <div class="group" style="margin-bottom:8px;">
-        <div class="grow" style="flex-direction:column;align-items:flex-start;gap:4px;padding:14px;">
-          <div style="font-size:13px;font-weight:600;color:var(--t1);">📱 ${txCount.toLocaleString()} charges stored on this device</div>
-          <div style="font-size:12px;color:var(--t2);line-height:1.5;">Data lives in Safari's local storage. It survives app restarts but <strong>can be lost</strong> if you clear Safari's cache or restore your iPhone. Export regularly to keep a safe copy.</div>
-          <div style="font-size:12px;color:var(--t2);margin-top:4px;">Last backup: <strong>${lastBackupStr}</strong></div>
-        </div>
-        <div class="set-item" id="s-repair">
-          <div class="set-icon" style="background:var(--indigo);">🔧</div>
-          <div style="flex:1;">
-            <div class="set-name">Fix Date Formats</div>
-            <div style="font-size:12px;color:var(--t2);margin-top:1px;">Repairs charges not showing on Overview or Charges tabs</div>
-          </div>
-          <span style="color:var(--t3);font-size:12px;">›</span>
-        </div>
-      </div>
-
-      <div class="section-lbl">Software Updates</div>
+      <div class="section-lbl">App &amp; Data</div>
       <div class="group" style="margin-bottom:8px;">
         <div class="set-item" id="s-updates">
           <div class="set-icon" style="background:var(--blue);" id="s-updates-icon">
@@ -2451,7 +2472,15 @@ const App = {
           </div>
           <div style="flex:1;">
             <div class="set-name">App Updates</div>
-            <div style="font-size:12px;color:${DB.get('updateAvailable',null)?'var(--red)':'var(--t2)'};margin-top:1px;" id="s-updates-sub">${DB.get('updateAvailable',null) ? `Update available: v${DB.get('updateAvailable',null)}` : `Checking from isaac-einstein36/spendly · v${CURRENT_VERSION}`}</div>
+            <div style="font-size:12px;color:${DB.get('updateAvailable',null)?'var(--red)':'var(--t2)'};margin-top:1px;" id="s-updates-sub">${DB.get('updateAvailable',null) ? `Update available: v${DB.get('updateAvailable',null)}` : `v${CURRENT_VERSION} · isaac-einstein36/spendly`}</div>
+          </div>
+          <span style="color:var(--t3);font-size:12px;">›</span>
+        </div>
+        <div class="set-item" id="s-repair">
+          <div class="set-icon" style="background:var(--teal);">🔧</div>
+          <div style="flex:1;">
+            <div class="set-name">Fix Date Formats</div>
+            <div style="font-size:12px;color:var(--t2);margin-top:1px;">${txCount.toLocaleString()} charges · repairs display issues</div>
           </div>
           <span style="color:var(--t3);font-size:12px;">›</span>
         </div>
@@ -2460,10 +2489,10 @@ const App = {
       <div class="section-lbl">Danger Zone</div>
       <div class="group">
         <div class="set-item" id="s-restart" style="cursor:pointer;">
-          <div class="set-icon" style="background:var(--indigo);">🔄</div>
+          <div class="set-icon" style="background:var(--orange);">🔄</div>
           <div style="flex:1;">
-            <div class="set-name">Start Fresh / Restart</div>
-            <div style="font-size:12px;color:var(--t2);">Clear all data and show welcome screen</div>
+            <div class="set-name">Start Fresh</div>
+            <div style="font-size:12px;color:var(--t2);">Clear all data · keep GitHub credentials</div>
           </div>
         </div>
         <div class="set-item" id="s-clear" style="cursor:pointer;">
@@ -2474,8 +2503,17 @@ const App = {
           </div>
         </div>
       </div>
-      <div style="text-align:center;padding:24px 16px 8px;color:var(--t3);font-size:12px;">Spendly v1.17.0 · Synced privately via GitHub Gist</div>
+      <div style="text-align:center;padding:24px 16px 8px;color:var(--t3);font-size:12px;">Spendly v${CURRENT_VERSION} · Private &amp; local</div>
     </div>`;
+
+    // Theme picker
+    main.querySelectorAll('.theme-seg-btn').forEach(btn => {
+      btn.onclick = () => {
+        DB.set('theme', btn.dataset.t);
+        document.documentElement.setAttribute('data-theme', btn.dataset.t);
+        this._buildSettings();
+      };
+    });
 
     document.getElementById('s-cats').onclick   = ()=>this._buildCatManager();
     document.getElementById('s-bud').onclick    = ()=>this._buildBudgetManager();
@@ -2507,7 +2545,7 @@ const App = {
 
     // Reminder toggle
     document.getElementById('remind-toggle').onclick = () => {
-      const cur = DB.get('remindBackup', true);
+      const cur = DB.get('remindBackup', false);
       DB.set('remindBackup', !cur);
       this._buildSettings(); // re-render to show new state
     };
