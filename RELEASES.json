@@ -1,5 +1,16 @@
 [
   {
+  "version": "1.20.0",
+  "date": "2026-05-11",
+  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
+  "notes": [
+    "Dark mode softer — less harsh contrast, proper dark header and nav bars",
+    "Red badge on Settings nav icon when an update is available",
+    "Update banner redesigned — Install Now is the clear primary action",
+    "What's New replaces the confusing history button in the update banner"
+    ]
+  },
+  {
   "version": "1.19.0",
   "date": "2026-05-10",
   "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
