@@ -1,5 +1,15 @@
 [
   {
+  "version": "1.21.0",
+  "date": "2026-05-11",
+  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
+  "notes": [
+    "Arithmetic operator buttons (+, −, ×, ÷) in the charge form — works with iPhone number pad",
+    "Subcategories now sorted alphabetically automatically on save",
+    "Backup email no longer defaults to a placeholder — users are prompted on first use"
+    ]
+  },
+  {
   "version": "1.20.0",
   "date": "2026-05-11",
   "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
