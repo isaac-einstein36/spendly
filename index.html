@@ -3506,7 +3506,7 @@ const App = {
           </label>
           <div class="amt-wrap">
             <span class="amt-pre">$</span>
-            <input class="fi amt" id="ts-amt" type="text" inputmode="text"
+            <input class="fi amt" id="ts-amt" type="text" inputmode="decimal"
               value="${tx.amount||''}" placeholder="0.00" autocomplete="off" autocorrect="off" autocapitalize="off">
           </div>
           <div style="display:flex;gap:6px;margin-top:6px;align-items:center;">
@@ -3558,9 +3558,11 @@ const App = {
     // Focus amount
     setTimeout(()=>{ const a=document.getElementById('ts-amt'); if(a){a.focus();a.select();} },300);
 
-    // Live arithmetic preview on amount field
+    // Arithmetic on amount field
     const amtInp = document.getElementById('ts-amt');
     const exprPrev = document.getElementById('ts-expr-preview');
+
+    // Live arithmetic preview while typing
     amtInp.addEventListener('input', () => {
       const raw = amtInp.value.trim();
       if (/[+\-\*\/x×÷−]/.test(raw)) {
@@ -3568,6 +3570,18 @@ const App = {
         exprPrev.textContent = result !== null ? `= $${result.toFixed(2)}` : '= ?';
       } else {
         exprPrev.textContent = '';
+      }
+    });
+
+    // On blur: evaluate and replace field value with the result
+    amtInp.addEventListener('blur', () => {
+      const raw = amtInp.value.trim();
+      if (/[+\-\*\/x×÷−]/.test(raw)) {
+        const result = this._evalExpr(raw);
+        if (result !== null) {
+          amtInp.value = result.toFixed(2);
+          exprPrev.textContent = '';
+        }
       }
     });
 
@@ -3983,7 +3997,7 @@ const App = {
   _evalExpr(raw) {
     if (!raw) return null;
     // Replace display chars with standard operators
-    const s = raw.replace(/×/g,'*').replace(/÷/g,'/').replace(/x/gi,'*').trim();
+    const s = raw.replace(/×/g,'*').replace(/÷/g,'/').replace(/x/gi,'*').replace(/−/g,'-').trim();
     // If it's a plain number, just parse it
     if (/^[\d.]+$/.test(s)) return parseFloat(s) || null;
     // Tokenize: numbers and operators only
