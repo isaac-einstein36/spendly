@@ -1,94 +1,69 @@
 [
   {
-  "version": "1.21.1",
-  "date": "2026-05-11",
-  "notes": [
-    "Bug Fixes",
+    "version": "1.21.1",
+    "date": "2026-05-11",
+    "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
+    "notes": [
+      "Arithmetic operator buttons in the charge form",
+      "Subcategories sorted alphabetically automatically",
+      "Backup email prompts new users instead of defaulting to a placeholder"
     ]
   },
   {
-  "version": "1.21.0",
-  "date": "2026-05-11",
-  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
-  "notes": [
-    "Arithmetic operator buttons (+, −, ×, ÷) in the charge form — works with iPhone number pad",
-    "Subcategories now sorted alphabetically automatically on save",
-    "Backup email no longer defaults to a placeholder — users are prompted on first use"
+    "version": "1.20.0",
+    "date": "2026-05-11",
+    "notes": [
+      "Dark mode softer — less harsh contrast, proper dark header and nav bars",
+      "Red badge on Settings nav icon when an update is available",
+      "Update banner redesigned — Install Now is the clear primary action",
+      "What's New replaces the confusing history button in the update banner"
     ]
   },
   {
-  "version": "1.20.0",
-  "date": "2026-05-11",
-  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
-  "notes": [
-    "Dark mode softer — less harsh contrast, proper dark header and nav bars",
-    "Red badge on Settings nav icon when an update is available",
-    "Update banner redesigned — Install Now is the clear primary action",
-    "What's New replaces the confusing history button in the update banner"
+    "version": "1.19.0",
+    "date": "2026-05-10",
+    "notes": [
+      "Dark mode — Auto, Light, or Dark in Settings",
+      "Settings reorganized — shorter, fewer sections, logical grouping",
+      "Backup overdue banner removed entirely",
+      "Import & Export section is now a compact grid"
     ]
   },
   {
-  "version": "1.19.0",
-  "date": "2026-05-10",
-  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
-  "notes": [
-    "Dark mode — Auto, Light, or Dark in Settings",
-    "Settings reorganized — shorter, fewer sections, logical grouping",
-    "Backup overdue banner removed entirely",
-    "Import & Export section is now a compact grid with no surrounding clutter"
+    "version": "1.18.0",
+    "date": "2026-05-10",
+    "notes": [
+      "Backup reminder now off by default",
+      "Backup overdue banner no longer appears for new accounts"
     ]
   },
   {
-  "version": "1.18.0",
-  "date": "2026-05-10",
-  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
-  "notes": [
-    "Backup reminder now off by default — opt-in in Settings if wanted",
-    "Backup overdue banner no longer appears for new accounts"
+    "version": "1.17.0",
+    "date": "2026-05-10",
+    "notes": [
+      "Update source hardcoded — no setup required for new users",
+      "Settings shows connected repo automatically",
+      "Red dot badge on Settings row when update available",
+      "Update check also runs after each charge save"
     ]
   },
   {
-  "version": "1.17.1",
-  "date": "2026-05-10",
-  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
-  "notes": [
-    "Update source hardcoded — no setup required for new users",
-    "Red dot badge on Settings → App Updates row when an update is available",
-    "Update check also runs after each charge save, once per session",
-    "Badge appears instantly from cache — no network wait on Settings open"
-    ]
-  },
-  {
-  "version": "1.17.0",
-  "date": "2026-05-10",
-  "url": "https://raw.githubusercontent.com/YOURUSERNAME/spendly/main/index.html",
-  "notes": [
-    "Test update to verify the update system is working",
-    "Version number now visible in Settings footer"
-    ]
-  },
-  {
-  "version": "1.16.0",
-  "date": "2026-05-09",
-  "url": "https://raw.githubusercontent.com/YOURUSERNAME/spendly/main/index.html",
-  "notes": [
-    "Start Fresh button in Settings — clears all data and returns to the welcome screen (GitHub credentials kept)",
-    "Clear All Categories button in the category manager for bulk reset",
-    "Category CSV import now works at any time, not just on first setup",
-    "Import confirm message clarifies that existing charges are preserved",
-    "Clear All Charges now shows a note that categories and budgets are kept"
+    "version": "1.16.0",
+    "date": "2026-05-09",
+    "notes": [
+      "Start Fresh button in Settings",
+      "Clear All Categories button",
+      "Category CSV import works at any time"
     ]
   },
   {
     "version": "1.15.0",
     "date": "2026-05-08",
     "notes": [
-      "First-run onboarding with sample data and CSV import shortcut",
+      "First-run onboarding with sample data",
       "Bulk export/import categories & budgets via CSV",
-      "Quick-add form layout fixed — $ no longer overlaps amount",
-      "Google Script section removed — email backup simplified",
-      "GitHub Pages support for one-tap updates",
-      "Version number display fixed"
+      "Quick-add form layout fixed",
+      "GitHub Pages support for one-tap updates"
     ]
   },
   {
@@ -96,22 +71,18 @@
     "date": "2026-05-07",
     "notes": [
       "Software update system with App Store-style changelog banner",
-      "Version history with one-tap revert to any version",
-      "GitHub Pages hosting support for seamless updates",
-      "PWA manifest for Add to Home Screen on iPhone and Mac"
+      "Version history with revert support",
+      "PWA manifest for Add to Home Screen"
     ]
   },
   {
     "version": "1.13.0",
     "date": "2026-05-06",
     "notes": [
-      "Arithmetic in amount fields — type 45+12 or 120/3",
+      "Arithmetic in amount fields",
       "Calendar category color dots toggle",
-      "Calendar desktop click fixed",
-      "Make Recurring available when editing existing charges",
-      "Recurring charge frequency — monthly, quarterly, annual",
-      "Tracking Start Date for accurate averages",
-      "Improved projected year-end formula"
+      "Recurring charge frequency settings",
+      "Tracking Start Date setting"
     ]
   },
   {
@@ -119,21 +90,9 @@
     "date": "2026-05-05",
     "notes": [
       "Subcategory breakdown in Annual overview",
-      "Projected annual shows monthly equivalent",
       "Annual chart simplified to Actual vs Budget",
       "Budget total calculation bug fixed"
-    ],
-    "_note": "No url — predates update system. Cannot be installed from within the app."
-  },
-  {
-    "version": "1.11.0",
-    "date": "2026-05-04",
-    "notes": [
-      "Today button on Overview and Calendar",
-      "Email backup via native Mail app",
-      "GitHub sync merges categories and budgets across devices"
-    ],
-    "_note": "No url — predates update system."
+    ]
   },
   {
     "version": "1.10.0",
@@ -142,40 +101,15 @@
       "Recurring charges with auto-post",
       "Swipe left to delete charges",
       "Split charge across multiple categories",
-      "Budget rollover for underspend",
-      "Quick-add shortcut",
-      "Stacked bar chart toggle",
-      "Emoji picker for categories"
-    ],
-    "_note": "No url — predates update system."
-  },
-  {
-    "version": "1.9.0",
-    "date": "2026-05-02",
-    "notes": [
-      "Copy CSV to clipboard in one tap",
-      "Email backup opens native Mail app"
-    ],
-    "_note": "No url — predates update system."
-  },
-  {
-    "version": "1.8.0",
-    "date": "2026-05-01",
-    "notes": [
-      "Today button bug fixed on Overview",
-      "GitHub sync merges categories across devices",
-      "Configurable backup email address"
-    ],
-    "_note": "No url — predates update system."
+      "Budget rollover, quick-add shortcut, stacked chart"
+    ]
   },
   {
     "version": "1.6.0",
     "date": "2026-04-30",
     "notes": [
       "GitHub Gist sync between iPhone and Mac",
-      "Sync button in header",
-      "Pull, push, and merge sync modes"
-    ],
-    "_note": "No url — predates update system."
+      "Sync button in header"
+    ]
   }
 ]
