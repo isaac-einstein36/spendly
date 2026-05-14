@@ -703,7 +703,21 @@ input,select,textarea{font-family:inherit}
   box-shadow:0 0 0 2px var(--surface);
 }
 .upd-dot-wrap{position:relative;display:inline-flex;}
-/* ── Nav update badge ── */
+/* ── Arithmetic operator buttons ── */
+.arith-btn {
+  padding: 6px 14px;
+  border-radius: var(--r-xs);
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  color: var(--blue);
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+  line-height: 1;
+  transition: background .1s;
+}
+.arith-btn:active { background: var(--border2); }
+</style>
 .nav-badge{
   position:absolute;top:4px;right:calc(50% - 16px);
   width:8px;height:8px;border-radius:50%;
@@ -783,7 +797,7 @@ input,select,textarea{font-family:inherit}
 // ============================================================
 
 // ── Version ──────────────────────────────────────────────────
-const CURRENT_VERSION = '1.20.0';
+const CURRENT_VERSION = '1.21.0';
 
 // ── Theme — apply immediately to avoid flash of wrong theme ──
 (function() {
@@ -2602,7 +2616,7 @@ const App = {
           <strong>Step 2</strong> — Tap <em>Open Mail</em>. Paste (⌘V / long-press → Paste) into the body, or attach the downloaded file.
         </div>
         <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--bg);border-radius:var(--r);margin-bottom:10px;">
-          <span style="font-size:12px;color:var(--t2);flex:1;">Sending to: <strong id="backup-email-display">${DB.get('backupEmail','isaacsemail1234@gmail.com')}</strong></span>
+          <span style="font-size:12px;color:var(--t2);flex:1;">Sending to: <strong id="backup-email-display" style="color:${DB.get('backupEmail',null)?'inherit':'var(--red)'};">${DB.get('backupEmail',null)||'Not set — tap Open Mail to add'}</strong></span>
           <button id="change-email-btn" style="font-size:12px;padding:4px 10px;border-radius:99px;background:rgba(0,122,255,.1);color:var(--blue);font-weight:600;border:none;cursor:pointer;">Change</button>
         </div>
         <button id="copy-csv-btn" style="width:100%;padding:14px;border-radius:var(--r);background:rgba(52,199,89,.1);border:1.5px solid rgba(52,199,89,.3);color:var(--green);font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:10px;">
@@ -2618,6 +2632,11 @@ const App = {
     ov.querySelector('#ebg-x').onclick = () => { ov.remove(); this._buildSettings(); };
 
     // Build CSV string once for both copy and mail body
+    const storedEmail = DB.get('backupEmail', null);
+    const emailDisplay = ov.querySelector('#backup-email-display');
+    if (emailDisplay) emailDisplay.textContent = storedEmail || 'Not set — tap to add';
+    if (emailDisplay && !storedEmail) emailDisplay.style.color = 'var(--red)';
+
     const buildCSV = () => {
       const header = 'Date,Amount,Category,Subcategory,Payee,Note';
       const rows = txs
@@ -2630,26 +2649,30 @@ const App = {
 
     ov.querySelector('#copy-csv-btn').onclick = async () => {
       const csv = buildCSV();
-      // 1. Copy to clipboard
       try {
         await navigator.clipboard.writeText(csv);
       } catch(e) {
-        // Fallback for older iOS
         const ta = document.createElement('textarea');
         ta.value = csv; ta.style.position = 'fixed'; ta.style.opacity = '0';
         document.body.appendChild(ta); ta.select(); document.execCommand('copy');
         document.body.removeChild(ta);
       }
-      // 2. Also trigger download so the file is in Files/Downloads
       this._download('spendly_export.csv', 'text/csv', csv);
       DB.set('lastBackup', new Date().toISOString());
-      // 3. Visual feedback
       const lbl = ov.querySelector('#copy-csv-label');
       if (lbl) { lbl.textContent = '✅ Copied & Downloaded!'; setTimeout(() => { lbl.textContent = 'Copy CSV & Download'; }, 2500); }
     };
 
     ov.querySelector('#open-mail-btn').onclick = () => {
-      const toEmail = DB.get('backupEmail', 'isaacsemail1234@gmail.com');
+      let toEmail = DB.get('backupEmail', null);
+      if (!toEmail) {
+        const entered = prompt('Enter your email address for backup:', '');
+        if (!entered || !entered.includes('@')) { this.toast('Valid email required', 'error'); return; }
+        toEmail = entered.trim();
+        DB.set('backupEmail', toEmail);
+        const disp = ov.querySelector('#backup-email-display');
+        if (disp) { disp.textContent = toEmail; disp.style.color = ''; }
+      }
       const month   = new Date().toLocaleDateString('en-US', {month:'long', year:'numeric'});
       const subject = encodeURIComponent(`Spendly Backup — ${month}`);
       const body    = encodeURIComponent(
@@ -2667,11 +2690,12 @@ const App = {
     };
 
     ov.querySelector('#change-email-btn').onclick = () => {
-      const cur = DB.get('backupEmail', 'isaacsemail1234@gmail.com');
-      const ne  = prompt('Enter backup email address:', cur);
+      const cur = DB.get('backupEmail', null);
+      const ne  = prompt('Enter backup email address:', cur || '');
       if (ne && ne.includes('@')) {
         DB.set('backupEmail', ne.trim());
-        ov.querySelector('#backup-email-display').textContent = ne.trim();
+        const disp = ov.querySelector('#backup-email-display');
+        if (disp) { disp.textContent = ne.trim(); disp.style.color = ''; }
         this.toast('Email updated ✓');
       }
     };
@@ -3278,7 +3302,7 @@ const App = {
             const [name, color, emoji, subs, budget] = cols;
             if (!name) return;
             newCats.push({ name, color: color||'#8B8B8B', emoji: emoji||'💳',
-              subcategories: subs ? subs.split(';').map(s=>s.trim()).filter(Boolean) : [] });
+              subcategories: subs ? subs.split(';').map(s=>s.trim()).filter(Boolean).sort((a,b)=>a.localeCompare(b)) : [] });
             if (budget) newBudgets[name] = parseFloat(budget)||0;
           });
           if (!newCats.length) { this.toast('No categories found in CSV','error'); return; }
@@ -3337,7 +3361,7 @@ const App = {
     ov.querySelector('#cs-cancel').onclick=close;
     ov.querySelector('#cs-save').onclick=()=>{
       const name=ov.querySelector('#cs-name').value.trim();
-      const subs=ov.querySelector('#cs-subs').value.split(',').map(s=>s.trim()).filter(Boolean);
+      const subs=ov.querySelector('#cs-subs').value.split(',').map(s=>s.trim()).filter(Boolean).sort((a,b)=>a.localeCompare(b));
       if(!name){this.toast('Name required','error');return;}
       const cats=this.cats();
       const idx=cats.findIndex(c=>c.name===(isNew?name:cat.name));
@@ -3477,13 +3501,22 @@ const App = {
       </div>
       <div class="sheet-body">
         <div class="ff">
-          <label class="fl">Amount <span id="ts-expr-preview" style="font-size:11px;color:var(--blue);font-weight:400;margin-left:6px;font-family:monospace;"></span></label>
+          <label class="fl" style="display:flex;align-items:center;justify-content:space-between;">
+            <span>Amount <span id="ts-expr-preview" style="font-size:11px;color:var(--blue);font-weight:400;margin-left:6px;font-family:monospace;"></span></span>
+          </label>
           <div class="amt-wrap">
             <span class="amt-pre">$</span>
-            <input class="fi amt" id="ts-amt" type="text" inputmode="decimal"
-              value="${tx.amount||''}" placeholder="0.00 or 12+34-5" autocomplete="off">
+            <input class="fi amt" id="ts-amt" type="text" inputmode="text"
+              value="${tx.amount||''}" placeholder="0.00" autocomplete="off" autocorrect="off" autocapitalize="off">
           </div>
-          <div style="font-size:11px;color:var(--t3);margin-top:3px;">Supports math: type 45+12 or 120/3 and it evaluates on save</div>
+          <div style="display:flex;gap:6px;margin-top:6px;align-items:center;">
+            <button type="button" class="arith-btn" data-op="+">+</button>
+            <button type="button" class="arith-btn" data-op="-">−</button>
+            <button type="button" class="arith-btn" data-op="*">×</button>
+            <button type="button" class="arith-btn" data-op="/">÷</button>
+            <span style="flex:1;"></span>
+            <span style="font-size:11px;color:var(--t3);font-style:italic;">tap to append</span>
+          </div>
         </div>
         <div class="ff"><label class="fl">Date</label>
           <input class="fi" id="ts-date" type="date" value="${tx.date||this._today()}"></div>
@@ -3530,12 +3563,25 @@ const App = {
     const exprPrev = document.getElementById('ts-expr-preview');
     amtInp.addEventListener('input', () => {
       const raw = amtInp.value.trim();
-      if (/[+\-\*\/x×÷]/.test(raw)) {
+      if (/[+\-\*\/x×÷−]/.test(raw)) {
         const result = this._evalExpr(raw);
         exprPrev.textContent = result !== null ? `= $${result.toFixed(2)}` : '= ?';
       } else {
         exprPrev.textContent = '';
       }
+    });
+
+    // Operator button row — appends operator and refocuses input
+    ov.querySelectorAll('.arith-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const op = btn.dataset.op;
+        const cur = amtInp.value.trim();
+        if (cur && !/[+\-\*\/]$/.test(cur)) {
+          amtInp.value = cur + op;
+          amtInp.dispatchEvent(new Event('input'));
+        }
+        amtInp.focus();
+      });
     });
 
     // Populate subcategory if editing
