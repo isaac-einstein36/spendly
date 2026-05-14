@@ -1,5 +1,12 @@
 [
   {
+  "version": "1.21.1",
+  "date": "2026-05-11",
+  "notes": [
+    "Bug Fixes",
+    ]
+  },
+  {
   "version": "1.21.0",
   "date": "2026-05-11",
   "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
