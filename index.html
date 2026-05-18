@@ -798,7 +798,7 @@ input,select,textarea{font-family:inherit}
 // ============================================================
 
 // ── Version ──────────────────────────────────────────────────
-const CURRENT_VERSION = '1.21.0';
+const CURRENT_VERSION = '1.22.0';
 
 // ── Theme — apply immediately to avoid flash of wrong theme ──
 (function() {
@@ -2169,7 +2169,7 @@ const App = {
         const icon = this._catIcon(tx.category);
         const subline = [tx.subcategory, tx.note].filter(Boolean).join(' · ');
         const recurBadge = tx.recurring_id ? `<span class="recur-badge">🔁 Auto</span>` : '';
-        const splitBadge = tx.splits?.length ? `<span class="recur-badge" style="background:rgba(88,86,214,.1);color:var(--indigo);">✂️ Split</span>` : '';
+        const splitBadge = tx.split_group ? `<span class="recur-badge" style="background:rgba(88,86,214,.1);color:var(--indigo);">✂️ Split</span>` : '';
         html += `<div class="tx-swipe-wrap" data-id="${tx.id}">
           <div class="tx-swipe-del"><span style="font-size:20px;">🗑</span><span>Delete</span></div>
           <div class="tx-swipe-inner tx-item" data-id="${tx.id}">
@@ -3537,13 +3537,13 @@ const App = {
           <input class="fi" id="ts-note" type="text" placeholder="Optional…" value="${tx.note||''}"></div>
 
         <!-- Split charge section -->
-        <div id="split-section" style="${splits.length?'':''}">
+        <div id="split-section">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
             <label class="fl" style="margin:0;">Split Charge</label>
             <button id="ts-add-split" style="font-size:12px;padding:4px 10px;border-radius:99px;background:rgba(88,86,214,.1);color:var(--indigo);font-weight:600;border:none;cursor:pointer;">+ Add Split</button>
           </div>
-          <div id="split-pills">${splitPills}</div>
-          ${splits.length ? `<div style="font-size:12px;color:var(--t2);margin-bottom:8px;">Split total: ${this._$(splits.reduce((s,p)=>s+p.amount,0))} of ${this._$(tx.amount||0)}</div>` : ''}
+          <div id="split-pills"></div>
+          <div id="split-remaining" style="font-size:12px;color:var(--t2);margin-bottom:8px;display:none;"></div>
         </div>
 
         <div class="btn-row">
@@ -3621,26 +3621,65 @@ const App = {
 
     // Split charge logic
     let liveSplits = [...splits];
+
     const refreshSplits = () => {
       const pills = ov.querySelector('#split-pills');
+      const remaining = ov.querySelector('#split-remaining');
       if (!pills) return;
+      const totalAmt = this._evalExpr(ov.querySelector('#ts-amt')?.value?.trim()||'0') || 0;
+      const splitTotal = liveSplits.reduce((s,p)=>s+p.amount, 0);
+      const rem = Math.round((totalAmt - splitTotal) * 100) / 100;
+
       pills.innerHTML = liveSplits.map((sp,i)=>`
-        <div class="split-pill">
-          <div class="split-pill-cat">${this._catIcon(sp.category)} ${sp.category}</div>
-          <div class="split-pill-amt">${this._$(sp.amount)}</div>
-          <button class="split-pill-del" data-si="${i}">✕</button>
+        <div class="split-pill" data-si="${i}">
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="font-size:14px;">${this._catIcon(sp.category)}</span>
+              <span class="split-pill-cat">${sp.category}${sp.subcategory?' · <span style="color:var(--t2);font-size:12px;">'+sp.subcategory+'</span>':''}</span>
+              <span class="split-pill-amt">${this._$(sp.amount)}</span>
+            </div>
+            ${sp.note?`<div style="font-size:11px;color:var(--t3);margin-top:2px;padding-left:22px;">${sp.note}</div>`:''}
+          </div>
+          <button class="split-pill-edit" data-si="${i}" style="width:28px;height:28px;border-radius:50%;background:rgba(0,122,255,.1);color:var(--blue);font-size:13px;display:flex;align-items:center;justify-content:center;border:none;cursor:pointer;flex-shrink:0;">✏️</button>
+          <button class="split-pill-del" data-si="${i}" style="width:28px;height:28px;border-radius:50%;background:rgba(255,59,48,.1);color:var(--red);font-size:13px;display:flex;align-items:center;justify-content:center;border:none;cursor:pointer;flex-shrink:0;">✕</button>
         </div>`).join('');
-      pills.querySelectorAll('.split-pill-del').forEach(btn=>{
+
+      pills.querySelectorAll('.split-pill-del').forEach(btn => {
         btn.onclick = () => { liveSplits.splice(parseInt(btn.dataset.si),1); refreshSplits(); };
       });
+      pills.querySelectorAll('.split-pill-edit').forEach(btn => {
+        btn.onclick = () => {
+          const i = parseInt(btn.dataset.si);
+          this._openSplitPicker(0, cats, liveSplits[i], result => {
+            liveSplits[i] = result;
+            refreshSplits();
+          });
+        };
+      });
+
+      if (remaining) {
+        if (liveSplits.length > 0) {
+          remaining.style.display = '';
+          const over = rem < -0.01;
+          remaining.innerHTML = over
+            ? `<span style="color:var(--red);">⚠️ Split total exceeds charge by ${this._$(Math.abs(rem))}</span>`
+            : rem > 0.01
+            ? `<span style="color:var(--t2);">${this._$(splitTotal)} split · <strong style="color:var(--green);">${this._$(rem)} unallocated</strong></span>`
+            : `<span style="color:var(--green);">✓ Fully split — ${this._$(splitTotal)}</span>`;
+        } else {
+          remaining.style.display = 'none';
+        }
+      }
     };
+
     refreshSplits();
+    ov.querySelector('#ts-amt')?.addEventListener('blur', refreshSplits);
     ov.querySelector('#ts-add-split')?.addEventListener('click', () => {
-      const amt = parseFloat(ov.querySelector('#ts-amt')?.value||0);
-      const used = liveSplits.reduce((s,p)=>s+p.amount,0);
-      const rem  = Math.max(0, amt - used);
-      this._openSplitPicker(rem, cats, (splitCat, splitAmt) => {
-        liveSplits.push({category:splitCat, amount:splitAmt});
+      const totalAmt = this._evalExpr(ov.querySelector('#ts-amt')?.value?.trim()||'0') || 0;
+      const used = liveSplits.reduce((s,p)=>s+p.amount, 0);
+      const rem  = Math.max(0, Math.round((totalAmt - used) * 100) / 100);
+      this._openSplitPicker(rem, cats, null, result => {
+        liveSplits.push(result);
         refreshSplits();
       });
     });
@@ -3666,7 +3705,6 @@ const App = {
         subcategory: ov.querySelector('#ts-sub').value,
         payee: ov.querySelector('#ts-payee').value.trim(),
         note:  ov.querySelector('#ts-note').value.trim(),
-        splits: liveSplits.length ? liveSplits : undefined,
       };
     };
 
@@ -3675,10 +3713,67 @@ const App = {
       if(!d.amount||d.amount<=0){this.toast('Enter a valid amount','error');return;}
       if(!d.category){this.toast('Select a category','error');return;}
       if(!d.date){this.toast('Select a date','error');return;}
-      if(isNew) this.addTx(d);
-      else this.updateTx(tx.id,d);
+
+      // Validate splits don't exceed total
+      if (liveSplits.length > 0) {
+        const splitTotal = liveSplits.reduce((s,p)=>s+p.amount,0);
+        if (splitTotal > d.amount + 0.01) {
+          this.toast('Split total exceeds charge amount','error'); return;
+        }
+      }
+
+      const splitGroupId = liveSplits.length > 0 ? crypto.randomUUID() : undefined;
+
+      if (isNew) {
+        if (liveSplits.length > 0) {
+          // Save each split as its own real transaction
+          liveSplits.forEach(sp => {
+            this.addTx({
+              ...d,
+              amount: sp.amount,
+              category: sp.category,
+              subcategory: sp.subcategory || '',
+              note: sp.note || d.note,
+              split_group: splitGroupId,
+              split_parent_payee: d.payee,
+            });
+          });
+          // If there's a remainder (unallocated amount), save it under the main category
+          const splitTotal = liveSplits.reduce((s,p)=>s+p.amount,0);
+          const rem = Math.round((d.amount - splitTotal) * 100) / 100;
+          if (rem > 0.01) {
+            this.addTx({ ...d, amount: rem, split_group: splitGroupId });
+          }
+        } else {
+          this.addTx(d);
+        }
+      } else {
+        if (liveSplits.length > 0) {
+          // Delete the old transaction and replace with split transactions
+          this.deleteTx(tx.id);
+          liveSplits.forEach(sp => {
+            this.addTx({
+              ...d,
+              amount: sp.amount,
+              category: sp.category,
+              subcategory: sp.subcategory || '',
+              note: sp.note || d.note,
+              split_group: splitGroupId,
+              split_parent_payee: d.payee,
+            });
+          });
+          const splitTotal = liveSplits.reduce((s,p)=>s+p.amount,0);
+          const rem = Math.round((d.amount - splitTotal) * 100) / 100;
+          if (rem > 0.01) {
+            this.addTx({ ...d, amount: rem, split_group: splitGroupId });
+          }
+        } else {
+          this.updateTx(tx.id, d);
+        }
+      }
+
       close();
-      this.toast(isNew?'Charge saved! 🎉':'Charge updated');
+      this.toast(isNew ? 'Charge saved! 🎉' : 'Charge updated');
       this._refreshView();
     };
 
@@ -3714,34 +3809,52 @@ const App = {
     if (makeRecurEditBtn) makeRecurEditBtn.onclick = () => makeRecurFn(false);
   },
 
-  _openSplitPicker(suggestedAmt, cats, onSave) {
-    const catOpts = cats.map(c=>`<option value="${c.name}">${c.emoji||'💳'} ${c.name}</option>`).join('');
+  _openSplitPicker(suggestedAmt, cats, existingSplit, onSave) {
+    const isEdit = !!existingSplit;
+    const catOpts = cats.map(c=>`<option value="${c.name}" ${existingSplit?.category===c.name?'selected':''}>${c.emoji||'💳'} ${c.name}</option>`).join('');
     const ov = this._overlay(`
       <div class="sheet-handle"></div>
-      <div class="sheet-hdr"><span class="sheet-title">Add Split</span><button class="sheet-close" id="sp-x">✕</button></div>
+      <div class="sheet-hdr"><span class="sheet-title">${isEdit?'Edit Split':'Add Split'}</span><button class="sheet-close" id="sp-x">✕</button></div>
       <div class="sheet-body">
         <div class="ff"><label class="fl">Amount for this split</label>
           <div class="amt-wrap"><span class="amt-pre">$</span>
-            <input class="fi amt" id="sp-amt" type="number" inputmode="decimal" step="0.01" min="0" value="${suggestedAmt>0?suggestedAmt.toFixed(2):''}" placeholder="0.00">
+            <input class="fi amt" id="sp-amt" type="text" inputmode="decimal" autocorrect="off"
+              value="${existingSplit?.amount>0?existingSplit.amount.toFixed(2):suggestedAmt>0?suggestedAmt.toFixed(2):''}" placeholder="0.00">
           </div></div>
         <div class="ff"><label class="fl">Category</label>
           <select class="fs" id="sp-cat"><option value="">Select…</option>${catOpts}</select></div>
+        <div class="ff" id="sp-sub-ff" style="${existingSplit?.category?'':'display:none'}">
+          <label class="fl">Subcategory</label>
+          <select class="fs" id="sp-sub"><option value="">Select…</option></select></div>
+        <div class="ff"><label class="fl">Note <span style="font-size:11px;color:var(--t3);">optional</span></label>
+          <input class="fi" id="sp-note" type="text" placeholder="e.g. Produce, Paper towels…" value="${existingSplit?.note||''}"></div>
         <div class="btn-row">
           <button class="btn-s" id="sp-cancel">Cancel</button>
-          <button class="btn-p" id="sp-save">Add Split</button>
+          <button class="btn-p" id="sp-save">${isEdit?'Update Split':'Add Split'}</button>
         </div>
         <div style="height:8px;"></div>
       </div>`);
+
+    // Pre-fill subcategory if editing
+    if (existingSplit?.category) {
+      this._fillSubSelect('sp-sub','sp-sub-ff', existingSplit.category, existingSplit.subcategory||'');
+    }
+    document.getElementById('sp-cat').addEventListener('change', e => {
+      this._fillSubSelect('sp-sub','sp-sub-ff', e.target.value, '');
+    });
+
     setTimeout(()=>{const a=ov.querySelector('#sp-amt');if(a){a.focus();a.select();}},200);
     ov.querySelector('#sp-x').onclick=()=>ov.remove();
     ov.querySelector('#sp-cancel').onclick=()=>ov.remove();
     ov.querySelector('#sp-save').onclick=()=>{
-      const amt=parseFloat(ov.querySelector('#sp-amt').value);
-      const cat=ov.querySelector('#sp-cat').value;
-      if(!amt||amt<=0){this.toast('Enter amount','error');return;}
-      if(!cat){this.toast('Select category','error');return;}
+      const amt = this._evalExpr(ov.querySelector('#sp-amt').value.trim());
+      const cat = ov.querySelector('#sp-cat').value;
+      const sub = ov.querySelector('#sp-sub').value;
+      const note= ov.querySelector('#sp-note').value.trim();
+      if(!amt||amt<=0){this.toast('Enter a valid amount','error');return;}
+      if(!cat){this.toast('Select a category','error');return;}
       ov.remove();
-      onSave(cat,amt);
+      onSave({category:cat, subcategory:sub, note, amount:amt});
     };
   },
 
