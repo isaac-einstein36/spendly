@@ -1,5 +1,16 @@
 [
   {
+  "version": "1.22.0",
+  "date": "2026-05-12",
+  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
+  "notes": [
+    "Split charges now create real separate transactions per category — they now appear correctly in all charts, budgets, and totals",
+    "Split picker now includes subcategory and note fields per split",
+    "Edit button on each split pill to update category, amount, subcategory, or note",
+    "Remaining balance shown live — green when fully allocated, red if over"
+    ]
+  },
+  {
     "version": "1.21.0",
     "date": "2026-05-11",
     "notes": [
