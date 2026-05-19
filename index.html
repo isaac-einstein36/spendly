@@ -798,7 +798,7 @@ input,select,textarea{font-family:inherit}
 // ============================================================
 
 // ── Version ──────────────────────────────────────────────────
-const CURRENT_VERSION = '1.22.0';
+const CURRENT_VERSION = '1.23.0';
 
 // ── Theme — apply immediately to avoid flash of wrong theme ──
 (function() {
@@ -1781,22 +1781,25 @@ const App = {
 
       const catRows = catAnalytics.map(cat => {
         const spent = cat.monthlyData[month]||0;
-        let budget = cat.monthlyBudget||0;
-        // Rollover: add surplus from previous month
+        const baseBudget = cat.monthlyBudget||0;
+
+        // Rollover: add surplus carried from previous month to effective budget
+        let rolloverSurplus = 0;
         if (rolloverOn && rolloverData[cat.name]) {
           const key = `${this.s.dashYear}-${String(month).padStart(2,'0')}`;
-          const surplus = rolloverData[cat.name][key] || 0;
-          budget = Math.max(0, budget + surplus);
+          rolloverSurplus = rolloverData[cat.name][key] || 0;
         }
+        const budget = baseBudget + rolloverSurplus;
+
         if (spent===0 && budget===0) return '';
         const pct  = budget>0 ? Math.min((spent/budget)*100,100) : (spent>0?100:0);
         const over = budget>0 && spent>budget;
         const pctN = budget>0 ? Math.round((spent/budget)*100) : 0;
         const left = budget-spent;
         let badge = '';
-        if (over)       badge=`<span class="badge badge-over">Over ${this._$(Math.abs(left))}</span>`;
+        if (over)         badge=`<span class="badge badge-over">Over ${this._$(Math.abs(left))}</span>`;
         else if(pctN>=80) badge=`<span class="badge badge-warn">${pctN}%</span>`;
-        else if(budget>0) badge=`<span class="badge badge-ok">${this._$(left)} left${rolloverOn&&(rolloverData[cat.name]?.[`${this.s.dashYear}-${String(month).padStart(2,'0')}`]||0)>0?' (incl. rollover)':''}</span>`;
+        else if(budget>0) badge=`<span class="badge badge-ok">${this._$(left)} left${rolloverSurplus>0?` <span style="color:var(--t3);font-size:10px;">(+${this._$(rolloverSurplus)} rollover)</span>`:''}</span>`;
         const emoji = this._catIcon(cat.name);
         return `<div class="cat-row">
           <div class="cat-top">
@@ -1805,7 +1808,7 @@ const App = {
             <span class="cat-spent" style="color:${over?'var(--red)':'var(--t1)'}">${this._$(spent)}</span>
           </div>
           <div class="prog-track"><div class="prog-fill" style="width:${pct}%;background:${over?'var(--red)':cat.color}"></div></div>
-          <div class="cat-meta"><span class="cat-sub-lbl">of ${this._$(budget)}/mo</span>${badge}</div>
+          <div class="cat-meta"><span class="cat-sub-lbl">of ${this._$(budget)}/mo${rolloverSurplus>0?` <span style="font-size:10px;color:var(--t3);">(base ${this._$(baseBudget)})</span>`:''}</span>${badge}</div>
         </div>`;
       }).join('');
 
@@ -4075,35 +4078,52 @@ const App = {
 
   // ── Budget rollover computation ──────────────────────────────
   _computeRollover() {
-    // For each category, for each past month, compute surplus (budget - spent)
-    // and carry it to the next month's budget
-    const budgets = this.budgets();
-    const txs = this.txs();
+    const budgets  = this.budgets();
+    const txs      = this.txs();
     const rollover = {};
+    const now      = new Date();
+    const curY     = now.getFullYear();
+    const curM     = now.getMonth() + 1;
+
+    if (!txs.length) { this.saveRollover({}); return; }
+
+    // Pre-aggregate spending by "cat||YYYY-MM" in a single pass — O(n)
+    const spendMap = {};
+    txs.forEach(t => {
+      if (!t.date || !t.category) return;
+      const ym  = t.date.substring(0, 7);
+      const key = `${t.category}||${ym}`;
+      spendMap[key] = (spendMap[key] || 0) + t.amount;
+    });
+
+    // Find earliest YYYY-MM across all transactions
+    let earliestYM = `${curY}-${String(curM).padStart(2,'0')}`;
+    txs.forEach(t => { if (t.date && t.date.substring(0,7) < earliestYM) earliestYM = t.date.substring(0,7); });
+    const startY = parseInt(earliestYM.substring(0,4));
+    const startM = parseInt(earliestYM.substring(5,7));
 
     this.cats().forEach(cat => {
       const budget = budgets[cat.name] || 0;
       if (!budget) return;
       rollover[cat.name] = {};
       let carry = 0;
-      // Go through all months from earliest tx to current month
-      const now = new Date();
-      const earliest = txs.reduce((min, t) => t.date < min ? t.date : min, now.toISOString().substring(0,7));
-      let y = parseInt(earliest.substring(0,4));
-      let m = parseInt(earliest.substring(5,7));
-      const curY = now.getFullYear(), curM = now.getMonth()+1;
-      while (y < curY || (y===curY && m <= curM)) {
-        const ym = `${y}-${String(m).padStart(2,'0')}`;
-        const spent = txs.filter(t=>t.category===cat.name&&t.date?.startsWith(ym)).reduce((s,t)=>s+t.amount,0);
-        // next month gets the carry from this month
-        let nm=m+1,ny=y; if(nm>12){nm=1;ny++;}
-        const nextYm=`${ny}-${String(nm).padStart(2,'0')}`;
+      let y = startY, m = startM;
+
+      // Walk months from earliest to current — O(months) per category, no inner filter
+      while (y < curY || (y === curY && m <= curM)) {
+        const ym    = `${y}-${String(m).padStart(2,'0')}`;
+        const spent = spendMap[`${cat.name}||${ym}`] || 0;
         const surplus = (budget + carry) - spent;
+        // next month gets the carry
+        let ny = y, nm = m + 1;
+        if (nm > 12) { nm = 1; ny++; }
+        const nextYm = `${ny}-${String(nm).padStart(2,'0')}`;
         rollover[cat.name][nextYm] = surplus > 0 ? surplus : 0;
-        carry = surplus > 0 ? surplus : 0; // only carry positive surplus
-        m++; if(m>12){m=1;y++;}
+        carry = surplus > 0 ? surplus : 0;
+        m++; if (m > 12) { m = 1; y++; }
       }
     });
+
     this.saveRollover(rollover);
   },
 
