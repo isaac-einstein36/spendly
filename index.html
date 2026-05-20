@@ -798,7 +798,7 @@ input,select,textarea{font-family:inherit}
 // ============================================================
 
 // ── Version ──────────────────────────────────────────────────
-const CURRENT_VERSION = '1.24.0';
+const CURRENT_VERSION = '1.25.0';
 
 // ── Theme — apply immediately to avoid flash of wrong theme ──
 (function() {
@@ -1682,9 +1682,25 @@ const App = {
   // ── Dashboard ───────────────────────────────────────────────
   _buildDashboard() {
     const data = this._analytics(this.s.dashYear);
-    const { totalYTD, totalMonthlyBudget, totalProjected, monthsElapsed, monthlySums } = data;
+    const { totalYTD, totalMonthlyBudget, totalProjected, monthsElapsed, monthlySums, catAnalytics } = data;
     const month = this.s.dashMonth;
     const monthSpend = monthlySums[month]||0;
+
+    // If rollover is on, effective monthly budget = sum of (base + surplus) per cat
+    const rolloverOn = DB.get('rolloverEnabled', false);
+    const effectiveMonthlyBudget = rolloverOn
+      ? catAnalytics.reduce((sum, cat) => {
+          if (!cat.monthlyBudget) return sum;
+          let carry = 0;
+          for (let m = 1; m < month; m++) {
+            const spent   = cat.monthlyData[m] || 0;
+            const surplus = (cat.monthlyBudget + carry) - spent;
+            carry = surplus > 0 ? surplus : 0;
+          }
+          return sum + cat.monthlyBudget + carry;
+        }, 0)
+      : totalMonthlyBudget;
+
     const ytdBudget = totalMonthlyBudget * monthsElapsed;
     const ytdDiff   = totalYTD - ytdBudget;
 
@@ -1698,7 +1714,10 @@ const App = {
         <div class="hero-lbl" id="hero-lbl">${this._monthFull(month)} spending</div>
         <div class="hero-amt" id="hero-amt">${this._$(monthSpend)}</div>
         <div class="hero-stats">
-          <div class="hero-stat"><div class="stat-lbl">Monthly budget</div><div class="stat-val c-muted">${this._$(totalMonthlyBudget)}</div></div>
+          <div class="hero-stat">
+            <div class="stat-lbl">Monthly budget${rolloverOn && effectiveMonthlyBudget !== totalMonthlyBudget ? ' <span style="font-size:9px;color:var(--green);">+rollover</span>' : ''}</div>
+            <div class="stat-val c-muted">${this._$(effectiveMonthlyBudget)}</div>
+          </div>
           <div class="hero-stat"><div class="stat-lbl">YTD vs budget</div><div class="stat-val ${ytdDiff>0?'c-red':'c-green'}">${ytdDiff>0?'+':''}${this._$(ytdDiff)}</div></div>
           <div class="hero-stat"><div class="stat-lbl">Proj. annual</div><div class="stat-val ${totalProjected>totalMonthlyBudget*12?'c-red':'c-green'}">${this._$(totalProjected)}</div></div>
         </div>
