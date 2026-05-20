@@ -798,7 +798,7 @@ input,select,textarea{font-family:inherit}
 // ============================================================
 
 // ── Version ──────────────────────────────────────────────────
-const CURRENT_VERSION = '1.23.0';
+const CURRENT_VERSION = '1.24.0';
 
 // ── Theme — apply immediately to avoid flash of wrong theme ──
 (function() {
@@ -844,6 +844,7 @@ const GH = {
       budgets:   DB.get('budgets', DEFAULT_BUDGETS),
       recurring: DB.get('recurring', []),
       rollover:  DB.get('rollover', {}),
+      paymentMethods: DB.get('paymentMethods', DEFAULT_PAYMENT_METHODS),
     };
   },
 
@@ -855,6 +856,7 @@ const GH = {
     DB.set('budgets',   data.budgets || DEFAULT_BUDGETS);
     DB.set('recurring', data.recurring || []);
     DB.set('rollover',  data.rollover  || {});
+    DB.set('paymentMethods', data.paymentMethods || DEFAULT_PAYMENT_METHODS);
     return true;
   },
 
@@ -1186,6 +1188,12 @@ const DEFAULT_BUDGETS = {
   Travel:200, Savings:453, Phone:50, Insurance:20,
 };
 
+const DEFAULT_PAYMENT_METHODS = [
+  { id:'cash',   name:'Cash',       icon:'💵', color:'#34c759' },
+  { id:'debit',  name:'Debit Card', icon:'💳', color:'#636366' },
+  { id:'venmo',  name:'Venmo',      icon:'💙', color:'#3D95CE' },
+];
+
 // ── App state ────────────────────────────────────────────────
 const App = {
   s: {
@@ -1213,7 +1221,8 @@ const App = {
   saveBudgets(v)   { DB.set('budgets', v);   this._scheduleSync(); },
   saveTxs(v)       { DB.set('txs', v);       this._scheduleSync(); this._triggerUpdateCheck(); },
   saveRecurring(v) { DB.set('recurring', v); this._scheduleSync(); },
-  saveRollover(v)  { DB.set('rollover', v);  this._scheduleSync(); },
+  paymentMethods() { return DB.get('paymentMethods', DEFAULT_PAYMENT_METHODS); },
+  savePaymentMethods(v) { DB.set('paymentMethods', v); this._scheduleSync(); },
 
   // Check for updates (debounced — at most once per session after first check)
   _updateCheckDone: false,
@@ -1268,6 +1277,7 @@ const App = {
     if (!localStorage.getItem('txs'))       DB.set('txs', []);
     if (!localStorage.getItem('recurring')) DB.set('recurring', []);
     if (!localStorage.getItem('rollover'))  DB.set('rollover', {});
+    if (!localStorage.getItem('paymentMethods')) DB.set('paymentMethods', DEFAULT_PAYMENT_METHODS);
 
     this._bindNav();
     this._bindAdd();
@@ -1777,18 +1787,28 @@ const App = {
       const monthSpends = Array.from({length:12},(_,i)=>monthlySums[i+1]||0);
       const stackedMode = DB.get('chartStacked', false);
       const rolloverOn  = DB.get('rolloverEnabled', false);
-      const rolloverData = this.rollover();
+
+      // Compute rollover surplus live from catAnalytics data — always accurate
+      // For each category, walk months 1..month-1 accumulating surplus, result is
+      // the carry into the selected month
+      const getLiveRollover = (cat) => {
+        if (!rolloverOn || !cat.monthlyBudget) return 0;
+        let carry = 0;
+        const viewYear = this.s.dashYear;
+        const now = new Date();
+        // Walk from January (or tracking start) up to the month before the selected one
+        for (let m = 1; m < month; m++) {
+          const spent   = cat.monthlyData[m] || 0;
+          const surplus = (cat.monthlyBudget + carry) - spent;
+          carry = surplus > 0 ? surplus : 0;
+        }
+        return carry;
+      };
 
       const catRows = catAnalytics.map(cat => {
         const spent = cat.monthlyData[month]||0;
         const baseBudget = cat.monthlyBudget||0;
-
-        // Rollover: add surplus carried from previous month to effective budget
-        let rolloverSurplus = 0;
-        if (rolloverOn && rolloverData[cat.name]) {
-          const key = `${this.s.dashYear}-${String(month).padStart(2,'0')}`;
-          rolloverSurplus = rolloverData[cat.name][key] || 0;
-        }
+        const rolloverSurplus = getLiveRollover(cat);
         const budget = baseBudget + rolloverSurplus;
 
         if (spent===0 && budget===0) return '';
@@ -1812,14 +1832,40 @@ const App = {
         </div>`;
       }).join('');
 
+      // Payment method summary for this month
+      const monthTxs = this.txs().filter(t => t.date &&
+        t.date.startsWith(`${this.s.dashYear}-${String(month).padStart(2,'0')}`));
+      const pmTotals = {};
+      monthTxs.forEach(t => {
+        if (!t.payment_method) return;
+        pmTotals[t.payment_method] = (pmTotals[t.payment_method] || 0) + t.amount;
+      });
+      const pmMethods = this.paymentMethods();
+      const pmEntries = Object.entries(pmTotals).sort((a,b)=>b[1]-a[1]);
+      const monthTotal = monthTxs.reduce((s,t)=>s+t.amount, 0);
+      const pmSummaryHtml = pmEntries.length ? `
+        <div class="section-lbl">By Payment Method · ${this._monthFull(month)}</div>
+        <div class="group">${pmEntries.map(([id, total]) => {
+          const pm = pmMethods.find(p=>p.id===id) || {icon:'💳', name:id, color:'#8B8B8B'};
+          const pct = monthTotal > 0 ? Math.round((total / monthTotal) * 100) : 0;
+          return `<div class="cat-row">
+            <div class="cat-top">
+              <span style="font-size:16px;line-height:1;">${pm.icon}</span>
+              <span class="cat-name">${pm.name}</span>
+              <span class="cat-spent">${this._$(total)}</span>
+            </div>
+            <div class="prog-track"><div class="prog-fill" style="width:${pct}%;background:${pm.color}"></div></div>
+            <div class="cat-meta"><span class="cat-sub-lbl">${pct}% of tagged spending</span></div>
+          </div>`;
+        }).join('')}</div>` : '';
+
       content.innerHTML = `
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:0 16px;">
-          <div class="section-lbl" style="padding:14px 0 6px;">Monthly Spending · ${this.s.dashYear}</div>
           <button id="chart-mode-toggle" style="font-size:12px;padding:4px 10px;border-radius:99px;background:rgba(0,122,255,.1);color:var(--blue);font-weight:600;border:none;cursor:pointer;">${stackedMode?'📊 Simple':'🎨 Stacked'}</button>
         </div>
         <div class="group" style="margin-bottom:8px;"><div class="chart-wrap"><canvas id="monthly-chart"></canvas></div></div>
         <div class="section-lbl">Categories · ${this._monthFull(month)}</div>
         <div class="group">${catRows||'<div style="padding:20px;text-align:center;color:var(--t3);font-size:14px;">No charges this month</div>'}</div>
+        ${pmSummaryHtml}
         <div style="height:8px;"></div>`;
 
       document.getElementById('chart-mode-toggle').onclick = () => {
@@ -2173,12 +2219,14 @@ const App = {
         const subline = [tx.subcategory, tx.note].filter(Boolean).join(' · ');
         const recurBadge = tx.recurring_id ? `<span class="recur-badge">🔁 Auto</span>` : '';
         const splitBadge = tx.split_group ? `<span class="recur-badge" style="background:rgba(88,86,214,.1);color:var(--indigo);">✂️ Split</span>` : '';
+        const pm = tx.payment_method ? this.paymentMethods().find(p=>p.id===tx.payment_method) : null;
+        const pmBadge = pm ? `<span class="recur-badge" style="background:rgba(0,0,0,.05);color:var(--t2);">${pm.icon}</span>` : '';
         html += `<div class="tx-swipe-wrap" data-id="${tx.id}">
           <div class="tx-swipe-del"><span style="font-size:20px;">🗑</span><span>Delete</span></div>
           <div class="tx-swipe-inner tx-item" data-id="${tx.id}">
             <div class="tx-icon" style="background:${color}18;font-size:17px;">${icon}</div>
             <div class="tx-info">
-              <div class="tx-title">${tx.payee||tx.category}${recurBadge}${splitBadge}</div>
+              <div class="tx-title">${tx.payee||tx.category}${recurBadge}${splitBadge}${pmBadge}</div>
               <div class="tx-sub">${tx.payee?tx.category+(subline?' · '+subline:''):subline||'—'}</div>
             </div>
             <div class="tx-right"><div class="tx-amt">${this._$(tx.amount)}</div></div>
@@ -2434,6 +2482,7 @@ const App = {
       <div class="group">
         <div class="set-item" id="s-cats"><div class="set-icon" style="background:var(--blue);">🏷</div><span class="set-name">Categories</span><span style="color:var(--t3);font-size:12px;">›</span></div>
         <div class="set-item" id="s-bud"><div class="set-icon" style="background:var(--green);">💰</div><span class="set-name">Monthly Budgets</span><span style="color:var(--t3);font-size:12px;">›</span></div>
+        <div class="set-item" id="s-payments"><div class="set-icon" style="background:var(--teal);">💳</div><div style="flex:1;"><div class="set-name">Payment Methods</div><div style="font-size:12px;color:var(--t2);">${this.paymentMethods().length} methods</div></div><span style="color:var(--t3);font-size:12px;">›</span></div>
         <div class="set-item" id="s-recur"><div class="set-icon" style="background:var(--indigo);">🔁</div><div style="flex:1;"><div class="set-name">Recurring Charges</div><div style="font-size:12px;color:var(--t2);">${this.recurring().filter(r=>r.active).length} active</div></div><span style="color:var(--t3);font-size:12px;">›</span></div>
         <div class="set-item" id="s-startdate">
           <div class="set-icon" style="background:var(--teal);">📅</div>
@@ -2546,12 +2595,11 @@ const App = {
 
     document.getElementById('s-cats').onclick   = ()=>this._buildCatManager();
     document.getElementById('s-bud').onclick    = ()=>this._buildBudgetManager();
+    document.getElementById('s-payments').onclick = ()=>this._buildPaymentMethodsManager();
     document.getElementById('s-recur').onclick  = ()=>this._buildRecurringManager();
     document.getElementById('s-startdate').onclick = () => this._openStartDatePicker();
     document.getElementById('rollover-toggle').onclick = () => {
-      const cur = DB.get('rolloverEnabled', false);
-      DB.set('rolloverEnabled', !cur);
-      if (!cur) this._computeRollover();
+      DB.set('rolloverEnabled', !DB.get('rolloverEnabled', false));
       this._buildSettings();
     };
 
@@ -3233,6 +3281,117 @@ const App = {
     };
   },
 
+  // ── Payment Methods manager ──────────────────────────────────
+  _buildPaymentMethodsManager() {
+    const main = document.getElementById('main');
+    const methods = this.paymentMethods();
+    const ICONS = ['💳','💵','💙','🏦','🍎','📱','💰','🔵','⬛','🟡','🔴','🟢'];
+    const COLORS = ['#636366','#34c759','#3D95CE','#007aff','#ff9500','#ff3b30','#5856d6','#30b0c7','#000000','#ff9f0a','#ff375f','#30d158'];
+
+    const rows = methods.map((pm,i) => `
+      <div class="set-item">
+        <div class="set-icon" style="background:${pm.color};font-size:16px;">${pm.icon}</div>
+        <span class="set-name" style="flex:1;">${pm.name}</span>
+        <button class="cmgr-btn btn-edit-pm" data-i="${i}" style="background:rgba(0,122,255,.1);color:var(--blue);">✏️</button>
+        <button class="cmgr-btn btn-del-pm" data-i="${i}" style="background:rgba(255,59,48,.1);color:var(--red);">🗑</button>
+      </div>`).join('');
+
+    main.innerHTML = `<div class="view">
+      <div style="display:flex;align-items:center;gap:10px;padding:20px 16px 12px;">
+        <button class="hdr-btn" id="pm-back">‹</button>
+        <div class="view-title" style="padding:0;">Payment Methods</div>
+      </div>
+      <div style="margin:0 16px 12px;background:rgba(0,122,255,.06);border:1px solid rgba(0,122,255,.15);border-radius:var(--r);padding:10px 12px;font-size:12px;color:var(--t2);">
+        Add your cards, accounts, and cash. Select a payment method when logging charges to see a spending breakdown by method on the Overview.
+      </div>
+      <div class="group">${rows}</div>
+      <div style="padding:0 16px;"><button class="btn-full" id="pm-add-btn">+ Add Payment Method</button></div>
+      <div style="height:16px;"></div>
+    </div>`;
+
+    document.getElementById('pm-back').onclick = () => this._buildSettings();
+    document.getElementById('pm-add-btn').onclick = () => this._openPaymentMethodSheet(null, ICONS, COLORS);
+
+    main.querySelectorAll('.btn-edit-pm').forEach(btn => {
+      btn.onclick = () => {
+        const pm = this.paymentMethods()[parseInt(btn.dataset.i)];
+        this._openPaymentMethodSheet(pm, ICONS, COLORS);
+      };
+    });
+    main.querySelectorAll('.btn-del-pm').forEach(btn => {
+      btn.onclick = () => {
+        if (!confirm('Remove this payment method?')) return;
+        const ms = this.paymentMethods();
+        ms.splice(parseInt(btn.dataset.i), 1);
+        this.savePaymentMethods(ms);
+        this.toast('Removed');
+        this._buildPaymentMethodsManager();
+      };
+    });
+  },
+
+  _openPaymentMethodSheet(pm, ICONS, COLORS) {
+    const isNew = !pm;
+    const iconBtns = ICONS.map(ic => `<button class="qa-key emoji-pick" data-e="${ic}"
+      style="height:38px;font-size:20px;border-radius:8px;${ic===(pm?.icon||'💳')?'background:rgba(0,122,255,.15);outline:2px solid var(--blue);':''}">${ic}</button>`).join('');
+    const swatches = COLORS.map(c => `<div class="csw ${c===(pm?.color||'#636366')?'sel':''}" style="background:${c}" data-c="${c}"></div>`).join('');
+
+    const ov = this._overlay(`
+      <div class="sheet-handle"></div>
+      <div class="sheet-hdr"><span class="sheet-title">${isNew?'Add Payment Method':'Edit Payment Method'}</span><button class="sheet-close" id="pm-x">✕</button></div>
+      <div class="sheet-body">
+        <div class="ff"><label class="fl">Name</label>
+          <input class="fi" id="pm-name" type="text" placeholder="e.g. Chase Sapphire, Venmo" value="${pm?.name||''}">
+        </div>
+        <div class="ff"><label class="fl">Icon</label>
+          <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px;">${iconBtns}</div>
+        </div>
+        <div class="ff"><label class="fl">Color</label>
+          <div class="c-swatches">${swatches}</div>
+        </div>
+        <div class="btn-row">
+          <button class="btn-s" id="pm-cancel">Cancel</button>
+          <button class="btn-p" id="pm-save">Save</button>
+        </div>
+        <div style="height:8px;"></div>
+      </div>`);
+
+    let selIcon  = pm?.icon  || '💳';
+    let selColor = pm?.color || '#636366';
+
+    ov.querySelectorAll('.emoji-pick').forEach(b => {
+      b.onclick = () => {
+        ov.querySelectorAll('.emoji-pick').forEach(x=>{x.style.background='';x.style.outline='';});
+        b.style.background='rgba(0,122,255,.15)'; b.style.outline='2px solid var(--blue)';
+        selIcon = b.dataset.e;
+      };
+    });
+    ov.querySelectorAll('.csw').forEach(s => {
+      s.onclick = () => {
+        ov.querySelectorAll('.csw').forEach(x=>x.classList.remove('sel'));
+        s.classList.add('sel'); selColor = s.dataset.c;
+      };
+    });
+
+    ov.querySelector('#pm-x').onclick = () => ov.remove();
+    ov.querySelector('#pm-cancel').onclick = () => ov.remove();
+    ov.querySelector('#pm-save').onclick = () => {
+      const name = ov.querySelector('#pm-name').value.trim();
+      if (!name) { this.toast('Enter a name','error'); return; }
+      const methods = this.paymentMethods();
+      const newPm = {
+        id: pm?.id || name.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'') + '-' + Date.now(),
+        name, icon: selIcon, color: selColor,
+      };
+      if (isNew) { methods.push(newPm); }
+      else { const i = methods.findIndex(m=>m.id===pm.id); if(i>=0) methods[i]=newPm; }
+      this.savePaymentMethods(methods);
+      ov.remove();
+      this.toast(isNew?'Payment method added':'Updated');
+      this._buildPaymentMethodsManager();
+    };
+  },
+
   // ── Category manager ─────────────────────────────────────────
   _buildCatManager() {
     const COLORS=['#4A6FA5','#E07A5F','#6BAB8A','#F2A65A','#9B8EA8','#5B9BD5','#8B8B8B','#48A9A6','#C97B84','#C9A84C','#6B8E6B','#A05C5C'];
@@ -3404,7 +3563,7 @@ const App = {
 
   // ── Add / Edit charge sheet ───────────────────────────────────
   _bindAdd(){
-    document.getElementById('add-btn').addEventListener('click',()=>this._openQuickAdd());
+    document.getElementById('add-btn').addEventListener('click', () => this._openTxSheet({}, true));
   },
 
   // Quick-add: native amount input + category picker
@@ -3538,6 +3697,12 @@ const App = {
         </div>
         <div class="ff"><label class="fl">Note</label>
           <input class="fi" id="ts-note" type="text" placeholder="Optional…" value="${tx.note||''}"></div>
+        <div class="ff"><label class="fl">Payment Method</label>
+          <select class="fs" id="ts-payment">
+            <option value="">Select…</option>
+            ${this.paymentMethods().map(p=>`<option value="${p.id}" ${tx.payment_method===p.id?'selected':''}>${p.icon} ${p.name}</option>`).join('')}
+          </select>
+        </div>
 
         <!-- Split charge section -->
         <div id="split-section">
@@ -3708,6 +3873,7 @@ const App = {
         subcategory: ov.querySelector('#ts-sub').value,
         payee: ov.querySelector('#ts-payee').value.trim(),
         note:  ov.querySelector('#ts-note').value.trim(),
+        payment_method: ov.querySelector('#ts-payment').value || undefined,
       };
     };
 
