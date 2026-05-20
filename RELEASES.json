@@ -1,5 +1,14 @@
 [
  {
+  "version": "1.25.0",
+  "date": "2026-05-13",
+  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
+  "notes": [
+    "Rollover surplus now reflected in the Monthly budget hero stat when rollover is enabled",
+    "Hero shows '+rollover' label and effective total budget including carried surplus"
+  ]
+},
+ {
   "version": "1.24.0",
   "date": "2026-05-13",
   "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
