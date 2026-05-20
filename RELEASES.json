@@ -1,5 +1,16 @@
 [
  {
+  "version": "1.24.0",
+  "date": "2026-05-13",
+  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
+  "notes": [
+    "Budget rollover now computed live — always accurate, never stale",
+    "Payment methods — add cards, cash, Venmo; tag charges; see monthly breakdown by method",
+    "Payment method summary on Overview monthly tab",
+    "Quick-add removed — + button opens full form directly"
+  ]
+ },
+ {
   "version": "1.23.0",
   "date": "2026-05-12",
   "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
@@ -7,8 +18,8 @@
     "Budget rollover no longer freezes the app when toggled",
     "Rollover surplus now actually adjusts the effective monthly budget in all calculations",
     "Category rows show rollover amount and base budget transparently when rollover is active"
-  ]
-}, 
+   ]
+ }, 
   {
   "version": "1.22.0",
   "date": "2026-05-12",
