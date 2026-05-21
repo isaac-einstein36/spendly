@@ -1,28 +1,36 @@
 [
  {
+  "version": "1.26.0",
+  "date": "2026-05-14",
+  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
+  "notes": [
+    "Chart toggle moved to right side of section header",
+    "Stacked bar chart now includes the monthly budget target line",
+    "Subcategory filter chips appear when a category is selected in Charges",
+    "Default payment method setting — auto-selects on new charges"
+   ]
+ },
+ {
   "version": "1.25.0",
   "date": "2026-05-13",
-  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
   "notes": [
     "Rollover surplus now reflected in the Monthly budget hero stat when rollover is enabled",
     "Hero shows '+rollover' label and effective total budget including carried surplus"
-  ]
-},
+   ]
+ },
  {
   "version": "1.24.0",
   "date": "2026-05-13",
-  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
   "notes": [
     "Budget rollover now computed live — always accurate, never stale",
     "Payment methods — add cards, cash, Venmo; tag charges; see monthly breakdown by method",
     "Payment method summary on Overview monthly tab",
     "Quick-add removed — + button opens full form directly"
-  ]
+   ]
  },
  {
   "version": "1.23.0",
   "date": "2026-05-12",
-  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
   "notes": [
     "Budget rollover no longer freezes the app when toggled",
     "Rollover surplus now actually adjusts the effective monthly budget in all calculations",
@@ -32,7 +40,6 @@
   {
   "version": "1.22.0",
   "date": "2026-05-12",
-  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
   "notes": [
     "Split charges now create real separate transactions per category — they now appear correctly in all charts, budgets, and totals",
     "Split picker now includes subcategory and note fields per split",
