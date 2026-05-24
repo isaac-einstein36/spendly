@@ -798,7 +798,7 @@ input,select,textarea{font-family:inherit}
 // ============================================================
 
 // ── Version ──────────────────────────────────────────────────
-const CURRENT_VERSION = '1.26.0';
+const CURRENT_VERSION = '1.27.0';
 
 // ── Theme — apply immediately to avoid flash of wrong theme ──
 (function() {
@@ -840,6 +840,7 @@ const GH = {
       _v: 3,
       _saved: new Date().toISOString(),
       txs:       DB.get('txs', []),
+      deletedIds: DB.get('deletedIds', {}),
       cats:      DB.get('cats', DEFAULT_CATS),
       budgets:   DB.get('budgets', DEFAULT_BUDGETS),
       recurring: DB.get('recurring', []),
@@ -852,6 +853,7 @@ const GH = {
   _unpack(data) {
     if (!data || (data._v !== 2 && data._v !== 3)) return false;
     DB.set('txs',       data.txs     || []);
+    DB.set('deletedIds', data.deletedIds || {});
     DB.set('cats',      data.cats    || DEFAULT_CATS);
     DB.set('budgets',   data.budgets || DEFAULT_BUDGETS);
     DB.set('recurring', data.recurring || []);
@@ -913,7 +915,7 @@ const GH = {
     DB.set('lastGhSync', new Date().toISOString());
   },
 
-  // Merge pull then push — merges txs, and uses most-recently-saved wins for settings
+  // Merge pull then push — respects deletions from both devices
   async sync() {
     const c = this.creds();
     if (!c || !c.gistId) throw new Error('GitHub not configured');
@@ -931,25 +933,39 @@ const GH = {
     const localSaved  = DB.get('lastGhSync', null);
     const remoteSaved = remote._saved || null;
 
-    // Merge transactions by id (union — keep all from both sides)
+    // Merge deletion tombstones from both sides
+    // { id: ISO timestamp } — union of all known deletions
+    const localDeleted  = DB.get('deletedIds', {});
+    const remoteDeleted = remote.deletedIds || {};
+    const mergedDeleted = { ...remoteDeleted };
+    // Keep the most recent timestamp for each id
+    Object.entries(localDeleted).forEach(([id, ts]) => {
+      if (!mergedDeleted[id] || ts > mergedDeleted[id]) {
+        mergedDeleted[id] = ts;
+      }
+    });
+    DB.set('deletedIds', mergedDeleted);
+
+    // Merge transactions: union of both sides, minus anything in mergedDeleted
     const localTxs  = DB.get('txs', []);
     const remoteTxs = remote.txs || [];
-    const merged = [...remoteTxs];
-    const ids    = new Set(remoteTxs.map(t => t.id));
-    localTxs.forEach(t => { if (!ids.has(t.id)) merged.push(t); });
+    const allById   = new Map();
+    // Remote first, then local overwrites (local is newer)
+    remoteTxs.forEach(t => allById.set(t.id, t));
+    localTxs.forEach(t  => allById.set(t.id, t));
+    // Remove any id that appears in mergedDeleted
+    const merged = [...allById.values()].filter(t => !mergedDeleted[t.id]);
     DB.set('txs', merged);
 
-    // For settings data (cats, budgets, recurring, rollover):
-    // If remote was saved MORE RECENTLY than our last sync, remote wins.
-    // This means a change made on the other device propagates here.
+    // Settings: remote wins if it was saved more recently than our last sync
     const remoteIsNewer = remoteSaved && (!localSaved || new Date(remoteSaved) > new Date(localSaved));
     if (remoteIsNewer) {
-      if (remote.cats)      DB.set('cats',      remote.cats);
-      if (remote.budgets)   DB.set('budgets',   remote.budgets);
-      if (remote.recurring) DB.set('recurring', remote.recurring);
-      if (remote.rollover)  DB.set('rollover',  remote.rollover);
+      if (remote.cats)           DB.set('cats',           remote.cats);
+      if (remote.budgets)        DB.set('budgets',        remote.budgets);
+      if (remote.recurring)      DB.set('recurring',      remote.recurring);
+      if (remote.rollover)       DB.set('rollover',       remote.rollover);
+      if (remote.paymentMethods) DB.set('paymentMethods', remote.paymentMethods);
     }
-    // (if local is newer or same age, local wins — our edits take precedence)
 
     await this.push();
   },
@@ -1268,6 +1284,10 @@ const App = {
   },
   deleteTx(id) {
     this.saveTxs(this.txs().filter(t => t.id !== id));
+    // Record tombstone so sync doesn't resurrect deleted charges
+    const deleted = DB.get('deletedIds', {});
+    deleted[id] = new Date().toISOString();
+    DB.set('deletedIds', deleted);
   },
 
   // ── Boot ────────────────────────────────────────────────────
@@ -1278,6 +1298,12 @@ const App = {
     if (!localStorage.getItem('txs'))       DB.set('txs', []);
     if (!localStorage.getItem('recurring')) DB.set('recurring', []);
     if (!localStorage.getItem('rollover'))  DB.set('rollover', {});
+    if (!localStorage.getItem('deletedIds')) DB.set('deletedIds', {});
+    // Prune tombstones older than 90 days — they'll never affect a sync that old
+    const deleted = DB.get('deletedIds', {});
+    const cutoff  = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+    const pruned  = Object.fromEntries(Object.entries(deleted).filter(([,ts]) => ts > cutoff));
+    if (Object.keys(pruned).length !== Object.keys(deleted).length) DB.set('deletedIds', pruned);
     if (!localStorage.getItem('paymentMethods')) DB.set('paymentMethods', DEFAULT_PAYMENT_METHODS);
 
     this._bindNav();
