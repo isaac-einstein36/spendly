@@ -1,5 +1,15 @@
 [
  {
+  "version": "1.27.0",
+  "date": "2026-05-14",
+  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
+  "notes": [
+    "Fixed: deleted charges were resurrected after syncing with another device",
+    "Sync now uses deletion tombstones — deletions propagate correctly across iPhone and Mac",
+    "Tombstones auto-pruned after 90 days to keep storage clean"
+   ]
+ },
+ {
   "version": "1.26.0",
   "date": "2026-05-14",
   "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
