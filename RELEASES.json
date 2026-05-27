@@ -1,5 +1,16 @@
 [
  {
+  "version": "1.28.0",
+  "date": "2026-05-15",
+  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
+  "notes": [
+    "Tapping a category on Overview opens that month's charges for that category",
+    "Credit/Return toggle on charge form — negative amounts show in green throughout the app",
+    "Split charge subcategory dropdowns fixed — were grabbing wrong element when stacked",
+    "Split notes confirmed working"
+  ]
+},
+ {
   "version": "1.27.0",
   "date": "2026-05-14",
   "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
