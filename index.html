@@ -798,7 +798,7 @@ input,select,textarea{font-family:inherit}
 // ============================================================
 
 // ── Version ──────────────────────────────────────────────────
-const CURRENT_VERSION = '1.29.0';
+const CURRENT_VERSION = '1.30.0';
 
 // ── Theme — apply immediately to avoid flash of wrong theme ──
 (function() {
@@ -1905,9 +1905,17 @@ const App = {
           </div>`;
         }).join('')}</div>` : '';
 
+      const hiddenChartCats = new Set(DB.get('chartHiddenCats', []));
+      const activeCatsForChart = catAnalytics.filter(c =>
+        Object.values(c.monthlyData).some(v=>v>0) && !hiddenChartCats.has(c.name));
+      const allChartCats = catAnalytics.filter(c => Object.values(c.monthlyData).some(v=>v>0));
+
       content.innerHTML = `
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:0 16px;">
-          <div class="section-lbl" style="padding:14px 0 6px;">Monthly Spending · ${this.s.dashYear}</div>
+        <div style="display:flex;align-items:center;gap:8px;padding:0 16px;">
+          <div class="section-lbl" style="padding:14px 0 6px;flex:1;">Monthly Spending · ${this.s.dashYear}</div>
+          <button id="chart-cat-filter-btn" title="Filter categories" style="font-size:12px;padding:4px 10px;border-radius:99px;background:${hiddenChartCats.size?'rgba(255,149,0,.15)':'rgba(0,0,0,.06)'};color:${hiddenChartCats.size?'var(--orange)':'var(--t2)'};font-weight:600;border:none;cursor:pointer;">
+            ⚙︎ ${hiddenChartCats.size ? `${allChartCats.length - hiddenChartCats.size}/${allChartCats.length}` : 'Filter'}
+          </button>
           <button id="chart-mode-toggle" style="font-size:12px;padding:4px 10px;border-radius:99px;background:rgba(0,122,255,.1);color:var(--blue);font-weight:600;border:none;cursor:pointer;">${stackedMode?'📊 Simple':'🎨 Stacked'}</button>
         </div>
         <div class="group" style="margin-bottom:8px;"><div class="chart-wrap"><canvas id="monthly-chart"></canvas></div></div>
@@ -1919,6 +1927,63 @@ const App = {
       document.getElementById('chart-mode-toggle').onclick = () => {
         DB.set('chartStacked', !stackedMode);
         this._renderDashTab('monthly', data);
+      };
+
+      document.getElementById('chart-cat-filter-btn').onclick = (e) => {
+        // Remove existing popover if open
+        const existing = document.getElementById('chart-cat-popover');
+        if (existing) { existing.remove(); return; }
+
+        const pop = document.createElement('div');
+        pop.id = 'chart-cat-popover';
+        pop.style.cssText = `position:fixed;z-index:350;background:var(--surface);border:.5px solid var(--border2);border-radius:var(--r);box-shadow:0 4px 20px rgba(0,0,0,.15);padding:8px 0;min-width:200px;max-height:320px;overflow-y:auto;`;
+        // Position below the button
+        const btn = document.getElementById('chart-cat-filter-btn');
+        const rect = btn.getBoundingClientRect();
+        pop.style.top  = (rect.bottom + 6) + 'px';
+        pop.style.right = (window.innerWidth - rect.right) + 'px';
+
+        // All/None row
+        pop.innerHTML = `<div style="display:flex;gap:0;border-bottom:.5px solid var(--border);margin-bottom:4px;">
+          <button id="chart-filter-all" style="flex:1;padding:7px 14px;font-size:12px;font-weight:700;background:none;border:none;color:var(--blue);cursor:pointer;">All</button>
+          <button id="chart-filter-none" style="flex:1;padding:7px 14px;font-size:12px;font-weight:700;background:none;border:none;color:var(--t2);cursor:pointer;">None</button>
+        </div>` +
+        allChartCats.map(cat => `
+          <label style="display:flex;align-items:center;gap:10px;padding:8px 14px;cursor:pointer;">
+            <input type="checkbox" data-cat="${cat.name}" ${hiddenChartCats.has(cat.name)?'':'checked'}
+              style="width:16px;height:16px;accent-color:${cat.color};cursor:pointer;">
+            <span style="font-size:14px;">${cat.emoji||'💳'}</span>
+            <span style="font-size:13px;font-weight:500;flex:1;">${cat.name}</span>
+            <span style="font-size:12px;color:var(--t2);">${this._$(Object.values(cat.monthlyData).reduce((s,v)=>s+v,0))}</span>
+          </label>`).join('');
+
+        document.body.appendChild(pop);
+
+        const saveAndRefresh = () => {
+          const hidden = [...pop.querySelectorAll('input[data-cat]:not(:checked)')].map(i=>i.dataset.cat);
+          DB.set('chartHiddenCats', hidden);
+          this._renderDashTab('monthly', data);
+          pop.remove();
+        };
+
+        pop.querySelectorAll('input[data-cat]').forEach(cb => {
+          cb.addEventListener('change', saveAndRefresh);
+        });
+        pop.querySelector('#chart-filter-all').onclick = () => {
+          DB.set('chartHiddenCats', []); this._renderDashTab('monthly', data); pop.remove();
+        };
+        pop.querySelector('#chart-filter-none').onclick = () => {
+          DB.set('chartHiddenCats', allChartCats.map(c=>c.name)); this._renderDashTab('monthly', data); pop.remove();
+        };
+
+        // Close when clicking outside
+        setTimeout(() => {
+          document.addEventListener('click', function handler(ev) {
+            if (!pop.contains(ev.target) && ev.target.id !== 'chart-cat-filter-btn') {
+              pop.remove(); document.removeEventListener('click', handler);
+            }
+          });
+        }, 10);
       };
 
       // Tapping a category row shows that month's charges for that category
@@ -1933,14 +1998,12 @@ const App = {
         if (!ctx) return;
         if (ctx._chart) ctx._chart.destroy();
         if (stackedMode) {
-          // Stacked bar: one dataset per category
-          const activeCats = catAnalytics.filter(c => Object.values(c.monthlyData).some(v=>v>0));
           ctx._chart = new Chart(ctx, {
             type:'bar',
             data:{
               labels:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
               datasets: [
-                ...activeCats.map(cat => ({
+                ...activeCatsForChart.map(cat => ({
                   label: cat.name,
                   data: Array.from({length:12},(_,i)=>cat.monthlyData[i+1]||0),
                   backgroundColor: cat.color,
@@ -1978,13 +2041,18 @@ const App = {
             }
           });
         } else {
+          // Simple mode: filter monthSpends to only include visible cats
+          const visibleMonthSpends = Array.from({length:12},(_,i) => {
+            const m = i+1;
+            return activeCatsForChart.reduce((s,c)=>s+(c.monthlyData[m]||0),0);
+          });
           ctx._chart = new Chart(ctx, {
             type:'bar',
             data:{
               labels:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
               datasets:[
-                { label:'Spent', data:monthSpends,
-                  backgroundColor:monthSpends.map((_,i)=>i+1===month?'rgba(0,122,255,1)':'rgba(0,122,255,0.22)'),
+                { label:'Spent', data:visibleMonthSpends,
+                  backgroundColor:visibleMonthSpends.map((_,i)=>i+1===month?'rgba(0,122,255,1)':'rgba(0,122,255,0.22)'),
                   borderRadius:5, borderSkipped:false },
                 { label:'Budget', data:Array(12).fill(totalMonthlyBudget),
                   type:'line', borderColor:'rgba(255,149,0,.55)',
