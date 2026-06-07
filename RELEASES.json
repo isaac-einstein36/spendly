@@ -1,5 +1,14 @@
 [
  {
+  "version": "1.30.0",
+  "date": "2026-05-15",
+  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
+  "notes": [
+    "Filter button on monthly chart — toggle individual categories on/off with All/None shortcuts",
+    "Filter persists across sessions, button shows count when active"
+  ]
+},
+ {
   "version": "1.29.0",
   "date": "2026-05-15",
   "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
