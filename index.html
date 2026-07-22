@@ -703,7 +703,16 @@ input,select,textarea{font-family:inherit}
   box-shadow:0 0 0 2px var(--surface);
 }
 .upd-dot-wrap{position:relative;display:inline-flex;}
-/* ── Arithmetic operator buttons ── */
+/* ── Budget plan chips ── */
+.plan-chip{
+  flex-shrink:0;padding:5px 12px;border-radius:99px;
+  background:var(--surface);border:1px solid var(--border2);
+  font-size:13px;font-weight:600;color:var(--t2);
+  cursor:pointer;white-space:nowrap;transition:all .15s;
+}
+.plan-chip-active{background:var(--blue);color:#fff;border-color:var(--blue);}
+.plan-chip:active{opacity:.75;}
+</style>
 .arith-btn {
   padding: 6px 14px;
   border-radius: var(--r-xs);
@@ -798,7 +807,7 @@ input,select,textarea{font-family:inherit}
 // ============================================================
 
 // ── Version ──────────────────────────────────────────────────
-const CURRENT_VERSION = '1.30.0';
+const CURRENT_VERSION = '1.31.0';
 
 // ── Theme — apply immediately to avoid flash of wrong theme ──
 (function() {
@@ -846,6 +855,7 @@ const GH = {
       recurring: DB.get('recurring', []),
       rollover:  DB.get('rollover', {}),
       paymentMethods: DB.get('paymentMethods', DEFAULT_PAYMENT_METHODS),
+      budgetPlans:    DB.get('budgetPlans', []),
     };
   },
 
@@ -859,6 +869,7 @@ const GH = {
     DB.set('recurring', data.recurring || []);
     DB.set('rollover',  data.rollover  || {});
     DB.set('paymentMethods', data.paymentMethods || DEFAULT_PAYMENT_METHODS);
+    if (data.budgetPlans?.length) DB.set('budgetPlans', data.budgetPlans);
     return true;
   },
 
@@ -1224,6 +1235,7 @@ const App = {
     txSubFilter: '',
     txSearch:  '',
     editingTx: null,
+    activePlanId: null,   // null = "All" (no filter)
   },
 
   // data accessors
@@ -1233,6 +1245,42 @@ const App = {
   recurring() { return DB.get('recurring', []); },
   rollover()  { return DB.get('rollover', {}); },
   payees()    { return [...new Set(this.txs().map(t => t.payee).filter(Boolean))].sort(); },
+  budgetPlans() { return DB.get('budgetPlans', this._defaultPlans()); },
+
+  _defaultPlans() {
+    // Migrate existing budgets into a default "Monthly" plan
+    const budgets = DB.get('budgets', DEFAULT_BUDGETS);
+    return [{
+      id: 'monthly',
+      name: 'Monthly',
+      icon: '📅',
+      color: '#007aff',
+      categoryLimits: budgets,
+    }];
+  },
+
+  saveBudgetPlans(v) { DB.set('budgetPlans', v); this._scheduleSync(); },
+
+  // Get the active plan (or null for "All")
+  activePlan() {
+    if (!this.s.activePlanId) return null;
+    return this.budgetPlans().find(p => p.id === this.s.activePlanId) || null;
+  },
+
+  // Categories visible in the current plan (all cats if no plan active)
+  visibleCats() {
+    const plan = this.activePlan();
+    if (!plan) return this.cats();
+    const names = new Set(Object.keys(plan.categoryLimits).filter(k => plan.categoryLimits[k] > 0));
+    return this.cats().filter(c => names.has(c.name));
+  },
+
+  // Budget for a category in the active plan (or global budgets)
+  planBudget(catName) {
+    const plan = this.activePlan();
+    if (plan) return plan.categoryLimits[catName] || 0;
+    return (this.budgets()[catName] || 0);
+  },
 
   saveCats(v)      { DB.set('cats', v);      this._scheduleSync(); },
   saveBudgets(v)   { DB.set('budgets', v);   this._scheduleSync(); },
@@ -1625,9 +1673,18 @@ const App = {
 
   // ── Analytics ───────────────────────────────────────────────
   _analytics(year) {
-    const txs = this.txs().filter(t => t.date && t.date.startsWith(String(year)));
+    const plan   = this.activePlan();
+    const cats   = plan
+      ? this.cats().filter(c => (plan.categoryLimits[c.name]||0) > 0 || Object.keys(plan.categoryLimits).includes(c.name))
+      : this.cats();
+
+    // Filter txs to plan categories if a plan is active
+    const allYearTxs = this.txs().filter(t => t.date && t.date.startsWith(String(year)));
+    const txs = plan
+      ? allYearTxs.filter(t => cats.some(c => c.name === t.category))
+      : allYearTxs;
+
     const budgets = this.budgets();
-    const cats = this.cats();
     const now = new Date();
     const curYear = now.getFullYear();
     const curMonth = now.getMonth() + 1;
@@ -1669,13 +1726,16 @@ const App = {
     });
 
     const totalYTD = txs.reduce((s,t) => s+t.amount, 0);
-    // Only sum budgets for currently active categories (avoids stale orphaned keys)
-    const totalMonthlyBudget = cats.reduce((s,c) => s + (budgets[c.name]||0), 0);
+    // Use plan's category limits if a plan is active, else global budgets
+    const getBudget = catName => plan ? (plan.categoryLimits[catName]||0) : (budgets[catName]||0);
+    const totalMonthlyBudget = cats.reduce((s,c) => s + getBudget(c.name), 0);
 
-    // Silently prune orphaned budget keys so they don't accumulate
-    const activeNames = new Set(cats.map(c=>c.name));
-    const pruned = Object.fromEntries(Object.entries(budgets).filter(([k])=>activeNames.has(k)));
-    if (Object.keys(pruned).length !== Object.keys(budgets).length) this.saveBudgets(pruned);
+    // Silently prune orphaned budget keys from global budgets (not plans)
+    if (!plan) {
+      const activeNames = new Set(cats.map(c=>c.name));
+      const pruned = Object.fromEntries(Object.entries(budgets).filter(([k])=>activeNames.has(k)));
+      if (Object.keys(pruned).length !== Object.keys(budgets).length) this.saveBudgets(pruned);
+    }
 
     const avgMonthly = monthsElapsed > 0 ? totalYTD / monthsElapsed : 0;
     // Projected = actual YTD + (avg/mo × months still remaining this year)
@@ -1684,7 +1744,7 @@ const App = {
 
     const catAnalytics = cats.map(cat => {
       const ytd = ytdByCat[cat.name]||0;
-      const mb = budgets[cat.name]||0;
+      const mb  = getBudget(cat.name);
       const avg = monthsElapsed > 0 ? ytd / monthsElapsed : 0;
       const proj = ytd + (avg * monthsRemaining);
       // Build subcategory breakdown for this category
@@ -1732,11 +1792,22 @@ const App = {
     const ytdDiff   = totalYTD - ytdBudget;
 
     const main = document.getElementById('main');
+    const plans = this.budgetPlans();
+    const planBarHtml = plans.length ? `
+      <div style="display:flex;gap:6px;padding:8px 16px 0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;">
+        <button class="plan-chip ${!this.s.activePlanId?'plan-chip-active':''}" data-pid="">🗂 All</button>
+        ${plans.map(p=>`<button class="plan-chip ${this.s.activePlanId===p.id?'plan-chip-active':''}" data-pid="${p.id}" style="${this.s.activePlanId===p.id?`background:${p.color};color:#fff;border-color:${p.color};`:''}">
+          ${p.icon} ${p.name}
+        </button>`).join('')}
+        <button id="plan-manage-btn" style="flex-shrink:0;padding:5px 10px;border-radius:99px;background:var(--bg);border:1px solid var(--border2);font-size:12px;font-weight:600;color:var(--t3);cursor:pointer;">⚙︎</button>
+      </div>` : '';
+
     main.innerHTML = `<div class="view">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 16px 0;">
-        <div class="view-title" style="padding:0;">${this.s.dashYear}</div>
+        <div class="view-title" style="padding:0;">${this.s.activePlanId ? (plans.find(p=>p.id===this.s.activePlanId)?.name||'Overview') : 'Overview'}</div>
         <button class="yr-pill" id="dash-yr-btn">${this.s.dashYear} ▾</button>
       </div>
+      ${planBarHtml}
       <div class="hero">
         <div class="hero-lbl" id="hero-lbl">${this._monthFull(month)} spending</div>
         <div class="hero-amt" id="hero-amt">${this._$(monthSpend)}</div>
@@ -1763,6 +1834,16 @@ const App = {
     </div>`;
 
     document.getElementById('dash-yr-btn').onclick = () => this._openYearPicker('dash');
+
+    // Plan selector chips
+    document.querySelectorAll('.plan-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.s.activePlanId = btn.dataset.pid || null;
+        this._buildDashboard();
+      });
+    });
+    const planManageBtn = document.getElementById('plan-manage-btn');
+    if (planManageBtn) planManageBtn.onclick = () => this._buildBudgetPlansManager();
     const todayBtn = document.getElementById('dash-today-btn');
     if (todayBtn) todayBtn.onclick = () => {
       const n = new Date();
@@ -1905,7 +1986,9 @@ const App = {
           </div>`;
         }).join('')}</div>` : '';
 
-      const hiddenChartCats = new Set(DB.get('chartHiddenCats', []));
+      // Chart uses plan-filtered cats (already in catAnalytics)
+      // If no plan active, respect the per-chart hidden cats filter
+      const hiddenChartCats = this.s.activePlanId ? new Set() : new Set(DB.get('chartHiddenCats', []));
       const activeCatsForChart = catAnalytics.filter(c =>
         Object.values(c.monthlyData).some(v=>v>0) && !hiddenChartCats.has(c.name));
       const allChartCats = catAnalytics.filter(c => Object.values(c.monthlyData).some(v=>v>0));
@@ -2672,6 +2755,7 @@ const App = {
       <div class="group">
         <div class="set-item" id="s-cats"><div class="set-icon" style="background:var(--blue);">🏷</div><span class="set-name">Categories</span><span style="color:var(--t3);font-size:12px;">›</span></div>
         <div class="set-item" id="s-bud"><div class="set-icon" style="background:var(--green);">💰</div><span class="set-name">Monthly Budgets</span><span style="color:var(--t3);font-size:12px;">›</span></div>
+        <div class="set-item" id="s-plans"><div class="set-icon" style="background:var(--indigo);">📋</div><div style="flex:1;"><div class="set-name">Budget Plans</div><div style="font-size:12px;color:var(--t2);">${this.budgetPlans().length} plan${this.budgetPlans().length!==1?'s':''}</div></div><span style="color:var(--t3);font-size:12px;">›</span></div>
         <div class="set-item" id="s-payments"><div class="set-icon" style="background:var(--teal);">💳</div><div style="flex:1;"><div class="set-name">Payment Methods</div><div style="font-size:12px;color:var(--t2);">${this.paymentMethods().length} methods · default: ${(() => { const d = DB.get('defaultPaymentMethod',''); const pm = this.paymentMethods().find(p=>p.id===d); return pm ? pm.icon+' '+pm.name : 'None'; })()}</div></div><span style="color:var(--t3);font-size:12px;">›</span></div>
         <div class="set-item" id="s-recur"><div class="set-icon" style="background:var(--indigo);">🔁</div><div style="flex:1;"><div class="set-name">Recurring Charges</div><div style="font-size:12px;color:var(--t2);">${this.recurring().filter(r=>r.active).length} active</div></div><span style="color:var(--t3);font-size:12px;">›</span></div>
         <div class="set-item" id="s-startdate">
@@ -2785,6 +2869,7 @@ const App = {
 
     document.getElementById('s-cats').onclick   = ()=>this._buildCatManager();
     document.getElementById('s-bud').onclick    = ()=>this._buildBudgetManager();
+    document.getElementById('s-plans').onclick  = ()=>this._buildBudgetPlansManager();
     document.getElementById('s-payments').onclick = ()=>this._buildPaymentMethodsManager();
     document.getElementById('s-recur').onclick  = ()=>this._buildRecurringManager();
     document.getElementById('s-startdate').onclick = () => this._openStartDatePicker();
@@ -3739,7 +3824,137 @@ const App = {
     };
   },
 
-  _buildBudgetManager(){
+  // ── Budget Plans Manager ─────────────────────────────────────
+  _buildBudgetPlansManager() {
+    const main  = document.getElementById('main');
+    const plans = this.budgetPlans();
+    const ICONS = ['📅','✈️','🏖️','🎄','🏠','🚗','💊','🎓','💼','🎮','🏋️','🎁','🌮','☕','🎵'];
+    const COLORS= ['#007aff','#34c759','#ff9500','#ff3b30','#5856d6','#30b0c7','#E07A5F','#48A9A6','#C97B84','#6BAB8A'];
+
+    const rows = plans.map((p,i) => `
+      <div class="set-item">
+        <div class="set-icon" style="background:${p.color};font-size:16px;">${p.icon}</div>
+        <div style="flex:1;">
+          <div class="set-name">${p.name}</div>
+          <div style="font-size:12px;color:var(--t2);">${Object.keys(p.categoryLimits).filter(k=>p.categoryLimits[k]>0).length} categories</div>
+        </div>
+        <button class="cmgr-btn btn-edit-plan" data-i="${i}" style="background:rgba(0,122,255,.1);color:var(--blue);">✏️</button>
+        ${plans.length > 1 ? `<button class="cmgr-btn btn-del-plan" data-i="${i}" style="background:rgba(255,59,48,.1);color:var(--red);">🗑</button>` : ''}
+      </div>`).join('');
+
+    main.innerHTML = `<div class="view">
+      <div style="display:flex;align-items:center;gap:10px;padding:20px 16px 12px;">
+        <button class="hdr-btn" id="bpm-back">‹</button>
+        <div class="view-title" style="padding:0;">Budget Plans</div>
+      </div>
+      <div style="margin:0 16px 12px;background:rgba(0,122,255,.06);border:1px solid rgba(0,122,255,.15);border-radius:var(--r);padding:10px 12px;font-size:12px;color:var(--t2);">
+        Budget plans let you track different spending contexts — a monthly budget, a travel budget, a holiday budget. Select a plan on the Overview to filter all spending and budgets to just that plan's categories.
+      </div>
+      <div class="group">${rows}</div>
+      <div style="padding:0 16px;"><button class="btn-full" id="bpm-add">+ New Budget Plan</button></div>
+      <div style="height:16px;"></div>
+    </div>`;
+
+    document.getElementById('bpm-back').onclick = () => this._buildSettings();
+    document.getElementById('bpm-add').onclick   = () => this._openBudgetPlanSheet(null, ICONS, COLORS);
+
+    main.querySelectorAll('.btn-edit-plan').forEach(btn => {
+      btn.onclick = () => this._openBudgetPlanSheet(plans[parseInt(btn.dataset.i)], ICONS, COLORS);
+    });
+    main.querySelectorAll('.btn-del-plan').forEach(btn => {
+      btn.onclick = () => {
+        if (!confirm(`Delete "${plans[parseInt(btn.dataset.i)].name}"?`)) return;
+        const updated = plans.filter((_,i)=>i!==parseInt(btn.dataset.i));
+        this.saveBudgetPlans(updated);
+        if (this.s.activePlanId === plans[parseInt(btn.dataset.i)].id) this.s.activePlanId = null;
+        this.toast('Plan deleted');
+        this._buildBudgetPlansManager();
+      };
+    });
+  },
+
+  _openBudgetPlanSheet(plan, ICONS, COLORS) {
+    const isNew = !plan;
+    const cats  = this.cats();
+    const existing = plan?.categoryLimits || {};
+
+    const iconBtns = ICONS.map(ic => `<button class="qa-key emoji-pick" data-e="${ic}"
+      style="height:38px;font-size:20px;border-radius:8px;${ic===(plan?.icon||'📅')?'background:rgba(0,122,255,.15);outline:2px solid var(--blue);':''}">${ic}</button>`).join('');
+    const swatches = COLORS.map(c => `<div class="csw ${c===(plan?.color||'#007aff')?'sel':''}" style="background:${c}" data-c="${c}"></div>`).join('');
+
+    const catRows = cats.map(cat => `
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:.5px solid var(--border);">
+        <span style="font-size:16px;flex-shrink:0;">${cat.emoji||'💳'}</span>
+        <span style="flex:1;font-size:14px;font-weight:500;">${cat.name}</span>
+        <div class="amt-wrap" style="width:110px;flex-shrink:0;">
+          <span class="amt-pre" style="font-size:13px;">$</span>
+          <input class="fi amt plan-cat-input" data-cat="${cat.name}" type="number"
+            inputmode="decimal" step="1" min="0" style="padding:6px 8px;font-size:14px;"
+            value="${existing[cat.name]||''}" placeholder="0">
+        </div>
+      </div>`).join('');
+
+    const ov = this._overlay(`
+      <div class="sheet-handle"></div>
+      <div class="sheet-hdr"><span class="sheet-title">${isNew?'New Budget Plan':'Edit Plan'}</span><button class="sheet-close" id="bps-x">✕</button></div>
+      <div class="sheet-body">
+        <div class="ff"><label class="fl">Plan Name</label>
+          <input class="fi" id="bps-name" type="text" placeholder="e.g. Travel, Holiday, Monthly" value="${plan?.name||''}"></div>
+        <div class="ff"><label class="fl">Icon</label>
+          <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:4px;">${iconBtns}</div></div>
+        <div class="ff"><label class="fl">Color</label>
+          <div class="c-swatches">${swatches}</div></div>
+        <div class="ff">
+          <label class="fl">Monthly limits per category <span style="font-size:11px;color:var(--t3);">leave blank to exclude from plan</span></label>
+          ${catRows}
+        </div>
+        <div class="btn-row">
+          <button class="btn-s" id="bps-cancel">Cancel</button>
+          <button class="btn-p" id="bps-save">Save Plan</button>
+        </div>
+        <div style="height:8px;"></div>
+      </div>`);
+
+    let selIcon  = plan?.icon  || '📅';
+    let selColor = plan?.color || '#007aff';
+
+    ov.querySelectorAll('.emoji-pick').forEach(b => {
+      b.onclick = () => {
+        ov.querySelectorAll('.emoji-pick').forEach(x=>{x.style.background='';x.style.outline='';});
+        b.style.background='rgba(0,122,255,.15)'; b.style.outline='2px solid var(--blue)';
+        selIcon = b.dataset.e;
+      };
+    });
+    ov.querySelectorAll('.csw').forEach(s => {
+      s.onclick = () => { ov.querySelectorAll('.csw').forEach(x=>x.classList.remove('sel')); s.classList.add('sel'); selColor=s.dataset.c; };
+    });
+
+    ov.querySelector('#bps-x').onclick = () => ov.remove();
+    ov.querySelector('#bps-cancel').onclick = () => ov.remove();
+    ov.querySelector('#bps-save').onclick = () => {
+      const name = ov.querySelector('#bps-name').value.trim();
+      if (!name) { this.toast('Enter a plan name','error'); return; }
+      const categoryLimits = {};
+      ov.querySelectorAll('.plan-cat-input').forEach(inp => {
+        const v = parseFloat(inp.value);
+        if (v > 0) categoryLimits[inp.dataset.cat] = v;
+      });
+      const newPlan = {
+        id:   plan?.id || 'plan-' + Date.now(),
+        name, icon: selIcon, color: selColor, categoryLimits,
+      };
+      const plans = this.budgetPlans();
+      if (isNew) { plans.push(newPlan); }
+      else { const i=plans.findIndex(p=>p.id===plan.id); if(i>=0)plans[i]=newPlan; }
+      this.saveBudgetPlans(plans);
+      ov.remove();
+      this.toast(isNew?'Plan created ✓':'Plan updated ✓');
+      this._buildBudgetPlansManager();
+    };
+  },
+
+  // ── Budget Manager (global monthly budgets) ─────────────────
+  _buildBudgetManager() {
     const main=document.getElementById('main');
     const rows=this.cats().map(cat=>`
       <div class="budget-row">
