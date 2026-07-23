@@ -1,4 +1,16 @@
 [
+ {
+  "version": "1.32.0",
+  "date": "2026-05-16",
+  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
+  "notes": [
+    "Budget Plans — create Travel, Holiday, Monthly budgets with optional per-category or total limits",
+    "Tag individual charges to one or more budget plans when logging",
+    "Multiple plans selected = one category/subcategory row per plan in the charge form",
+    "Plan selector on Overview filters all spending and analytics to that plan",
+    "Default plan pre-selects on new charges"
+  ]
+},
 {
   "version": "1.31.0",
   "date": "2026-05-15",
