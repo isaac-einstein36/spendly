@@ -808,7 +808,7 @@ input,select,textarea{font-family:inherit}
 // ============================================================
 
 // ── Version ──────────────────────────────────────────────────
-const CURRENT_VERSION = '1.31.0';
+const CURRENT_VERSION = '1.32.0';
 
 // ── Theme — apply immediately to avoid flash of wrong theme ──
 (function() {
@@ -1257,6 +1257,7 @@ const App = {
       icon: '📅',
       color: '#007aff',
       categoryLimits: budgets,
+      monthlyLimit: null,  // null = sum of category limits
     }];
   },
 
@@ -1675,14 +1676,19 @@ const App = {
   // ── Analytics ───────────────────────────────────────────────
   _analytics(year) {
     const plan   = this.activePlan();
-    const cats   = plan
-      ? this.cats().filter(c => (plan.categoryLimits[c.name]||0) > 0 || Object.keys(plan.categoryLimits).includes(c.name))
-      : this.cats();
+    const cats   = this.cats(); // always all cats for display
 
-    // Filter txs to plan categories if a plan is active
     const allYearTxs = this.txs().filter(t => t.date && t.date.startsWith(String(year)));
+
+    // Filter txs to the active plan:
+    // 1. If tx has budget_ids, check if plan.id is in it
+    // 2. If tx has no budget_ids (legacy/untagged), fall back to category matching
     const txs = plan
-      ? allYearTxs.filter(t => cats.some(c => c.name === t.category))
+      ? allYearTxs.filter(t => {
+          if (t.budget_ids?.length) return t.budget_ids.includes(plan.id);
+          // Legacy fallback: match by category if plan has categoryLimits for it
+          return plan.categoryLimits && (plan.categoryLimits[t.category] != null);
+        })
       : allYearTxs;
 
     const budgets = this.budgets();
@@ -1728,8 +1734,11 @@ const App = {
 
     const totalYTD = txs.reduce((s,t) => s+t.amount, 0);
     // Use plan's category limits if a plan is active, else global budgets
-    const getBudget = catName => plan ? (plan.categoryLimits[catName]||0) : (budgets[catName]||0);
-    const totalMonthlyBudget = cats.reduce((s,c) => s + getBudget(c.name), 0);
+    const getBudget = catName => plan ? (plan.categoryLimits?.[catName]||0) : (budgets[catName]||0);
+    // Plan total budget: explicit monthlyLimit overrides, else sum category limits, else sum global
+    const totalMonthlyBudget = plan
+      ? (plan.monthlyLimit || cats.reduce((s,c) => s + (plan.categoryLimits?.[c.name]||0), 0))
+      : cats.reduce((s,c) => s + (budgets[c.name]||0), 0);
 
     // Silently prune orphaned budget keys from global budgets (not plans)
     if (!plan) {
@@ -2756,7 +2765,7 @@ const App = {
       <div class="group">
         <div class="set-item" id="s-cats"><div class="set-icon" style="background:var(--blue);">🏷</div><span class="set-name">Categories</span><span style="color:var(--t3);font-size:12px;">›</span></div>
         <div class="set-item" id="s-bud"><div class="set-icon" style="background:var(--green);">💰</div><span class="set-name">Monthly Budgets</span><span style="color:var(--t3);font-size:12px;">›</span></div>
-        <div class="set-item" id="s-plans"><div class="set-icon" style="background:var(--indigo);">📋</div><div style="flex:1;"><div class="set-name">Budget Plans</div><div style="font-size:12px;color:var(--t2);">${this.budgetPlans().length} plan${this.budgetPlans().length!==1?'s':''}</div></div><span style="color:var(--t3);font-size:12px;">›</span></div>
+        <div class="set-item" id="s-plans"><div class="set-icon" style="background:var(--indigo);">📋</div><div style="flex:1;"><div class="set-name">Budget Plans</div><div style="font-size:12px;color:var(--t2);">${this.budgetPlans().length} plan${this.budgetPlans().length!==1?'s':''} · default: ${(() => { const d=DB.get('defaultBudgetPlanId',''); const p=this.budgetPlans().find(p=>p.id===d); return p?p.icon+' '+p.name:'None'; })()}</div></div><span style="color:var(--t3);font-size:12px;">›</span></div>
         <div class="set-item" id="s-payments"><div class="set-icon" style="background:var(--teal);">💳</div><div style="flex:1;"><div class="set-name">Payment Methods</div><div style="font-size:12px;color:var(--t2);">${this.paymentMethods().length} methods · default: ${(() => { const d = DB.get('defaultPaymentMethod',''); const pm = this.paymentMethods().find(p=>p.id===d); return pm ? pm.icon+' '+pm.name : 'None'; })()}</div></div><span style="color:var(--t3);font-size:12px;">›</span></div>
         <div class="set-item" id="s-recur"><div class="set-icon" style="background:var(--indigo);">🔁</div><div style="flex:1;"><div class="set-name">Recurring Charges</div><div style="font-size:12px;color:var(--t2);">${this.recurring().filter(r=>r.active).length} active</div></div><span style="color:var(--t3);font-size:12px;">›</span></div>
         <div class="set-item" id="s-startdate">
@@ -3831,34 +3840,45 @@ const App = {
     const plans = this.budgetPlans();
     const ICONS = ['📅','✈️','🏖️','🎄','🏠','🚗','💊','🎓','💼','🎮','🏋️','🎁','🌮','☕','🎵'];
     const COLORS= ['#007aff','#34c759','#ff9500','#ff3b30','#5856d6','#30b0c7','#E07A5F','#48A9A6','#C97B84','#6BAB8A'];
+    const defaultId = DB.get('defaultBudgetPlanId','');
 
-    const rows = plans.map((p,i) => `
-      <div class="set-item">
+    const rows = plans.map((p,i) => {
+      const limCount = Object.keys(p.categoryLimits||{}).filter(k=>(p.categoryLimits[k]||0)>0).length;
+      const isDefault = p.id === defaultId;
+      return `<div class="set-item">
         <div class="set-icon" style="background:${p.color};font-size:16px;">${p.icon}</div>
-        <div style="flex:1;">
-          <div class="set-name">${p.name}</div>
-          <div style="font-size:12px;color:var(--t2);">${Object.keys(p.categoryLimits).filter(k=>p.categoryLimits[k]>0).length} categories</div>
+        <div style="flex:1;min-width:0;">
+          <div class="set-name">${p.name}${isDefault?' <span style="font-size:11px;color:var(--green);font-weight:400;">✓ default</span>':''}</div>
+          <div style="font-size:12px;color:var(--t2);">${limCount>0?`${limCount} category limits`:'No category limits'}${p.monthlyLimit?` · ${this._$(p.monthlyLimit)}/mo`:''}</div>
         </div>
+        <button class="cmgr-btn btn-dflt-plan" data-id="${p.id}" style="font-size:11px;padding:4px 8px;background:${isDefault?'rgba(52,199,89,.15)':'var(--bg)'};color:${isDefault?'var(--green)':'var(--t3)'};">Default</button>
         <button class="cmgr-btn btn-edit-plan" data-i="${i}" style="background:rgba(0,122,255,.1);color:var(--blue);">✏️</button>
-        ${plans.length > 1 ? `<button class="cmgr-btn btn-del-plan" data-i="${i}" style="background:rgba(255,59,48,.1);color:var(--red);">🗑</button>` : ''}
-      </div>`).join('');
+        ${plans.length>1?`<button class="cmgr-btn btn-del-plan" data-i="${i}" style="background:rgba(255,59,48,.1);color:var(--red);">🗑</button>`:''}
+      </div>`;
+    }).join('');
 
     main.innerHTML = `<div class="view">
       <div style="display:flex;align-items:center;gap:10px;padding:20px 16px 12px;">
         <button class="hdr-btn" id="bpm-back">‹</button>
         <div class="view-title" style="padding:0;">Budget Plans</div>
       </div>
-      <div style="margin:0 16px 12px;background:rgba(0,122,255,.06);border:1px solid rgba(0,122,255,.15);border-radius:var(--r);padding:10px 12px;font-size:12px;color:var(--t2);">
-        Budget plans let you track different spending contexts — a monthly budget, a travel budget, a holiday budget. Select a plan on the Overview to filter all spending and budgets to just that plan's categories.
+      <div style="margin:0 16px 12px;background:rgba(0,122,255,.06);border:1px solid rgba(0,122,255,.15);border-radius:var(--r);padding:10px 12px;font-size:12px;color:var(--t2);line-height:1.5;">
+        Create named budgets — Monthly, Travel, Holiday. Select a plan on the Overview to filter spending to that plan. Tag individual charges to plans when logging them. Plans can have optional per-category limits or just a total monthly limit.
       </div>
-      <div class="group">${rows}</div>
+      <div class="group">${rows||'<div style="padding:16px;text-align:center;color:var(--t3);">No plans yet</div>'}</div>
       <div style="padding:0 16px;"><button class="btn-full" id="bpm-add">+ New Budget Plan</button></div>
       <div style="height:16px;"></div>
     </div>`;
 
     document.getElementById('bpm-back').onclick = () => this._buildSettings();
     document.getElementById('bpm-add').onclick   = () => this._openBudgetPlanSheet(null, ICONS, COLORS);
-
+    main.querySelectorAll('.btn-dflt-plan').forEach(btn => {
+      btn.onclick = () => {
+        DB.set('defaultBudgetPlanId', btn.dataset.id === defaultId ? '' : btn.dataset.id);
+        this.toast(btn.dataset.id === defaultId ? 'Default cleared' : 'Default set ✓');
+        this._buildBudgetPlansManager();
+      };
+    });
     main.querySelectorAll('.btn-edit-plan').forEach(btn => {
       btn.onclick = () => this._openBudgetPlanSheet(plans[parseInt(btn.dataset.i)], ICONS, COLORS);
     });
@@ -3891,7 +3911,7 @@ const App = {
           <span class="amt-pre" style="font-size:13px;">$</span>
           <input class="fi amt plan-cat-input" data-cat="${cat.name}" type="number"
             inputmode="decimal" step="1" min="0" style="padding:6px 8px;font-size:14px;"
-            value="${existing[cat.name]||''}" placeholder="0">
+            value="${existing[cat.name]||''}" placeholder="—">
         </div>
       </div>`).join('');
 
@@ -3906,7 +3926,13 @@ const App = {
         <div class="ff"><label class="fl">Color</label>
           <div class="c-swatches">${swatches}</div></div>
         <div class="ff">
-          <label class="fl">Monthly limits per category <span style="font-size:11px;color:var(--t3);">leave blank to exclude from plan</span></label>
+          <label class="fl">Total monthly limit <span style="font-size:11px;color:var(--t3);">optional — leave blank for no overall cap</span></label>
+          <div class="amt-wrap"><span class="amt-pre">$</span>
+            <input class="fi amt" id="bps-total" type="number" inputmode="decimal" step="1" min="0"
+              value="${plan?.monthlyLimit||''}" placeholder="e.g. 2000"></div>
+        </div>
+        <div class="ff">
+          <label class="fl">Per-category limits <span style="font-size:11px;color:var(--t3);">all optional — blank = no limit for that category</span></label>
           ${catRows}
         </div>
         <div class="btn-row">
@@ -3940,9 +3966,12 @@ const App = {
         const v = parseFloat(inp.value);
         if (v > 0) categoryLimits[inp.dataset.cat] = v;
       });
+      const totalLimit = parseFloat(ov.querySelector('#bps-total').value) || null;
       const newPlan = {
-        id:   plan?.id || 'plan-' + Date.now(),
-        name, icon: selIcon, color: selColor, categoryLimits,
+        id: plan?.id || 'plan-' + Date.now(),
+        name, icon: selIcon, color: selColor,
+        categoryLimits,
+        monthlyLimit: totalLimit,
       };
       const plans = this.budgetPlans();
       if (isNew) { plans.push(newPlan); }
@@ -4116,18 +4145,30 @@ const App = {
             <div class="ac-list hidden" id="ac-list"></div>
           </div>
         </div>
-        <div class="ff"><label class="fl">Category</label>
-          <select class="fs" id="ts-cat"><option value="">Select…</option>${catOpts}</select></div>
-        <div class="ff" id="ts-sub-ff" style="${tx.category?'':'display:none'}">
-          <label class="fl">Subcategory</label>
-          <select class="fs" id="ts-sub"><option value="">Select…</option></select>
+
+        <div class="ff">
+          <label class="fl">Budget Plan <span style="font-size:11px;color:var(--t3);font-weight:400;">select all that apply</span></label>
+          <div id="ts-plan-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">
+            ${this.budgetPlans().map(p => {
+              const sel = tx.budget_ids ? tx.budget_ids.includes(p.id)
+                : (isNew ? (this.s.activePlanId === p.id || DB.get('defaultBudgetPlanId','') === p.id) : false);
+              return `<button type="button" class="plan-chip ts-plan-btn ${sel?'plan-chip-active':''}"
+                data-pid="${p.id}" style="${sel?`background:${p.color};color:#fff;border-color:${p.color};`:''}">
+                ${p.icon} ${p.name}</button>`;
+            }).join('')}
+          </div>
         </div>
+
+        <div id="ts-budget-cats">
+          <!-- Populated dynamically based on selected plans -->
+        </div>
+
         <div class="ff"><label class="fl">Note</label>
           <input class="fi" id="ts-note" type="text" placeholder="Optional…" value="${tx.note||''}"></div>
         <div class="ff"><label class="fl">Payment Method</label>
           <select class="fs" id="ts-payment">
             <option value="">Select…</option>
-            ${this.paymentMethods().map(p=>`<option value="${p.id}" ${(tx.payment_method || (isNew ? DB.get('defaultPaymentMethod','') : ''))===p.id?'selected':''}>${p.icon} ${p.name}</option>`).join('')}
+            ${this.paymentMethods().map(p=>`<option value="${p.id}" ${(tx.payment_method||(isNew?DB.get('defaultPaymentMethod',''):''))===p.id?'selected':''}>${p.icon} ${p.name}</option>`).join('')}
           </select>
         </div>
 
@@ -4152,17 +4193,17 @@ const App = {
       </div>`);
 
     // Focus amount
-    setTimeout(()=>{ const a=document.getElementById('ts-amt'); if(a){a.focus();a.select();} },300);
+    setTimeout(()=>{ const a=ov.querySelector('#ts-amt'); if(a){a.focus();a.select();} },300);
 
     // Arithmetic on amount field
-    const amtInp = document.getElementById('ts-amt');
-    const exprPrev = document.getElementById('ts-expr-preview');
+    const amtInp  = ov.querySelector('#ts-amt');
+    const exprPrev = ov.querySelector('#ts-expr-preview');
     let isCredit = (tx.amount||0) < 0;
 
     // Credit toggle
-    const creditWrap = document.getElementById('credit-toggle-wrap');
-    const creditKnob = document.getElementById('credit-toggle-knob');
-    const creditLbl  = document.getElementById('credit-toggle-lbl');
+    const creditWrap = ov.querySelector('#credit-toggle-wrap');
+    const creditKnob = ov.querySelector('#credit-toggle-knob');
+    const creditLbl  = ov.querySelector('#credit-toggle-lbl');
     if (creditWrap) {
       creditWrap.addEventListener('click', () => {
         isCredit = !isCredit;
@@ -4173,72 +4214,125 @@ const App = {
       });
     }
 
-    // Live arithmetic preview while typing
+    // Live arithmetic preview
     amtInp.addEventListener('input', () => {
       const raw = amtInp.value.trim();
-      if (/[+\-\*\/x×÷−]/.test(raw)) {
-        const result = this._evalExpr(raw);
-        exprPrev.textContent = result !== null ? `= $${result.toFixed(2)}` : '= ?';
-      } else {
-        exprPrev.textContent = '';
-      }
+      exprPrev.textContent = /[+\-\*\/x×÷−]/.test(raw)
+        ? (r => r !== null ? `= $${r.toFixed(2)}` : '= ?')(this._evalExpr(raw))
+        : '';
     });
-
-    // On blur: evaluate and replace field value with the result
     amtInp.addEventListener('blur', () => {
       const raw = amtInp.value.trim();
       if (/[+\-\*\/x×÷−]/.test(raw)) {
-        const result = this._evalExpr(raw);
-        if (result !== null) {
-          amtInp.value = result.toFixed(2);
-          exprPrev.textContent = '';
-        }
+        const r = this._evalExpr(raw);
+        if (r !== null) { amtInp.value = r.toFixed(2); exprPrev.textContent = ''; }
       }
     });
-
-    // Operator button row — appends operator and refocuses input
     ov.querySelectorAll('.arith-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const op = btn.dataset.op;
         const cur = amtInp.value.trim();
         if (cur && !/[+\-\*\/]$/.test(cur)) {
-          amtInp.value = cur + op;
+          amtInp.value = cur + btn.dataset.op;
           amtInp.dispatchEvent(new Event('input'));
         }
         amtInp.focus();
       });
     });
 
-    // Populate subcategory if editing
-    if(tx.category) this._fillSubSelect('ts-sub','ts-sub-ff',tx.category,tx.subcategory);
-    document.getElementById('ts-cat').addEventListener('change',e=>this._fillSubSelect('ts-sub','ts-sub-ff',e.target.value,''));
-
     // Payee autocomplete
-    const payeeInp=document.getElementById('ts-payee');
-    const acList=document.getElementById('ac-list');
-    payeeInp.addEventListener('input',()=>{
-      const q=payeeInp.value.toLowerCase();
-      if(!q){acList.classList.add('hidden');return;}
-      const matches=this.payees().filter(p=>p.toLowerCase().includes(q));
-      if(!matches.length){acList.classList.add('hidden');return;}
-      acList.innerHTML=matches.slice(0,6).map(p=>`<div class="ac-item">${p}</div>`).join('');
+    const payeeInp = ov.querySelector('#ts-payee');
+    const acList   = ov.querySelector('#ac-list');
+    payeeInp.addEventListener('input', () => {
+      const q = payeeInp.value.toLowerCase();
+      if (!q) { acList.classList.add('hidden'); return; }
+      const matches = this.payees().filter(p=>p.toLowerCase().includes(q));
+      if (!matches.length) { acList.classList.add('hidden'); return; }
+      acList.innerHTML = matches.slice(0,6).map(p=>`<div class="ac-item">${p}</div>`).join('');
       acList.classList.remove('hidden');
-      acList.querySelectorAll('.ac-item').forEach(item=>{
-        item.addEventListener('mousedown',e=>{e.preventDefault();payeeInp.value=item.textContent;acList.classList.add('hidden');});
+      acList.querySelectorAll('.ac-item').forEach(item => {
+        item.addEventListener('mousedown', e => { e.preventDefault(); payeeInp.value=item.textContent; acList.classList.add('hidden'); });
       });
     });
-    payeeInp.addEventListener('blur',()=>setTimeout(()=>acList.classList.add('hidden'),150));
+    payeeInp.addEventListener('blur', () => setTimeout(()=>acList.classList.add('hidden'),150));
+
+    // ── Dynamic per-plan category rows ───────────────────────────
+    const buildCatRow = (planId, planName, planColor, existingCat, existingSub) => {
+      const rowId = planId || 'global';
+      const opts  = `<option value="">Select…</option>${catOpts}`;
+      return `<div class="ff plan-cat-row" data-plan="${rowId}">
+        <label class="fl" style="color:${planColor||'var(--t2)'};">
+          ${planName ? `📋 ${planName} — Category` : 'Category'}
+        </label>
+        <select class="fs plan-cat-sel" data-plan="${rowId}" id="ts-cat-${rowId}">
+          ${cats.map(c=>`<option value="${c.name}" ${c.name===existingCat?'selected':''}>${c.emoji||'💳'} ${c.name}</option>`).join('')}
+        </select>
+        <div class="ff plan-sub-ff" id="ts-sub-ff-${rowId}" style="${existingCat?'':'display:none'}">
+          <label class="fl">Subcategory</label>
+          <select class="fs plan-sub-sel" data-plan="${rowId}" id="ts-sub-${rowId}"><option value="">Select…</option></select>
+        </div>
+      </div>`;
+    };
+
+    const refreshCatRows = () => {
+      const container = ov.querySelector('#ts-budget-cats');
+      if (!container) return;
+      const selPlans = [...ov.querySelectorAll('.ts-plan-btn.plan-chip-active')]
+        .map(b => this.budgetPlans().find(p=>p.id===b.dataset.pid)).filter(Boolean);
+
+      if (selPlans.length === 0) {
+        // No plan selected — single global category row
+        const prevCat = ov.querySelector('.plan-cat-sel')?.value || tx.category || '';
+        const prevSub = ov.querySelector('.plan-sub-sel')?.value || tx.subcategory || '';
+        container.innerHTML = buildCatRow(null, '', '', prevCat, prevSub);
+      } else {
+        // One row per plan
+        container.innerHTML = selPlans.map(p => {
+          // Preserve previously entered values if re-rendering
+          const prevSel = ov.querySelector(`#ts-cat-${p.id}`);
+          const prevCat = prevSel?.value || (tx.budget_ids?.includes(p.id) ? tx.category : '') || '';
+          const prevSub = ov.querySelector(`#ts-sub-${p.id}`)?.value || (tx.budget_ids?.includes(p.id) ? tx.subcategory : '') || '';
+          return buildCatRow(p.id, p.name, p.color, prevCat, prevSub);
+        }).join('');
+      }
+
+      // Wire subcategory dropdowns for each row
+      container.querySelectorAll('.plan-cat-sel').forEach(sel => {
+        const rowId = sel.dataset.plan;
+        if (sel.value) this._fillSubSelect(`ts-sub-${rowId}`, `ts-sub-ff-${rowId}`, sel.value,
+          ov.querySelector(`#ts-sub-${rowId}`)?.value || '', ov);
+        sel.addEventListener('change', e => {
+          this._fillSubSelect(`ts-sub-${rowId}`, `ts-sub-ff-${rowId}`, e.target.value, '', ov);
+        });
+      });
+    };
+
+    // Initial render
+    refreshCatRows();
+
+    // Budget plan multi-select toggle → re-render category rows
+    ov.querySelectorAll('.ts-plan-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const plan = this.budgetPlans().find(p=>p.id===btn.dataset.pid);
+        const active = btn.classList.toggle('plan-chip-active');
+        btn.style.background  = active ? (plan?.color||'var(--blue)') : '';
+        btn.style.color       = active ? '#fff' : '';
+        btn.style.borderColor = active ? (plan?.color||'var(--blue)') : '';
+        refreshCatRows();
+      });
+    });
+
+    // Note + payment method (global, not per-plan)
+    // These elements are still in the form below ts-budget-cats
 
     // Split charge logic
     let liveSplits = [...splits];
-
     const refreshSplits = () => {
-      const pills = ov.querySelector('#split-pills');
+      const pills     = ov.querySelector('#split-pills');
       const remaining = ov.querySelector('#split-remaining');
       if (!pills) return;
-      const totalAmt = this._evalExpr(ov.querySelector('#ts-amt')?.value?.trim()||'0') || 0;
+      const totalAmt   = this._evalExpr(ov.querySelector('#ts-amt')?.value?.trim()||'0') || 0;
       const splitTotal = liveSplits.reduce((s,p)=>s+p.amount, 0);
-      const rem = Math.round((totalAmt - splitTotal) * 100) / 100;
+      const rem        = Math.round((totalAmt - splitTotal) * 100) / 100;
 
       pills.innerHTML = liveSplits.map((sp,i)=>`
         <div class="split-pill" data-si="${i}">
@@ -4251,33 +4345,25 @@ const App = {
             ${sp.note?`<div style="font-size:11px;color:var(--t3);margin-top:2px;padding-left:22px;">${sp.note}</div>`:''}
           </div>
           <button class="split-pill-edit" data-si="${i}" style="width:28px;height:28px;border-radius:50%;background:rgba(0,122,255,.1);color:var(--blue);font-size:13px;display:flex;align-items:center;justify-content:center;border:none;cursor:pointer;flex-shrink:0;">✏️</button>
-          <button class="split-pill-del" data-si="${i}" style="width:28px;height:28px;border-radius:50%;background:rgba(255,59,48,.1);color:var(--red);font-size:13px;display:flex;align-items:center;justify-content:center;border:none;cursor:pointer;flex-shrink:0;">✕</button>
+          <button class="split-pill-del"  data-si="${i}" style="width:28px;height:28px;border-radius:50%;background:rgba(255,59,48,.1);color:var(--red);font-size:13px;display:flex;align-items:center;justify-content:center;border:none;cursor:pointer;flex-shrink:0;">✕</button>
         </div>`).join('');
 
-      pills.querySelectorAll('.split-pill-del').forEach(btn => {
-        btn.onclick = () => { liveSplits.splice(parseInt(btn.dataset.si),1); refreshSplits(); };
+      pills.querySelectorAll('.split-pill-del').forEach(b => {
+        b.onclick = () => { liveSplits.splice(parseInt(b.dataset.si),1); refreshSplits(); };
       });
-      pills.querySelectorAll('.split-pill-edit').forEach(btn => {
-        btn.onclick = () => {
-          const i = parseInt(btn.dataset.si);
-          this._openSplitPicker(0, cats, liveSplits[i], result => {
-            liveSplits[i] = result;
-            refreshSplits();
-          });
-        };
+      pills.querySelectorAll('.split-pill-edit').forEach(b => {
+        b.onclick = () => { const i=parseInt(b.dataset.si); this._openSplitPicker(0,cats,liveSplits[i],r=>{liveSplits[i]=r;refreshSplits();}); };
       });
 
       if (remaining) {
-        if (liveSplits.length > 0) {
-          remaining.style.display = '';
+        remaining.style.display = liveSplits.length ? '' : 'none';
+        if (liveSplits.length) {
           const over = rem < -0.01;
           remaining.innerHTML = over
             ? `<span style="color:var(--red);">⚠️ Split total exceeds charge by ${this._$(Math.abs(rem))}</span>`
             : rem > 0.01
             ? `<span style="color:var(--t2);">${this._$(splitTotal)} split · <strong style="color:var(--green);">${this._$(rem)} unallocated</strong></span>`
             : `<span style="color:var(--green);">✓ Fully split — ${this._$(splitTotal)}</span>`;
-        } else {
-          remaining.style.display = 'none';
         }
       }
     };
@@ -4286,101 +4372,121 @@ const App = {
     ov.querySelector('#ts-amt')?.addEventListener('blur', refreshSplits);
     ov.querySelector('#ts-add-split')?.addEventListener('click', () => {
       const totalAmt = this._evalExpr(ov.querySelector('#ts-amt')?.value?.trim()||'0') || 0;
-      const used = liveSplits.reduce((s,p)=>s+p.amount, 0);
-      const rem  = Math.max(0, Math.round((totalAmt - used) * 100) / 100);
-      this._openSplitPicker(rem, cats, null, result => {
-        liveSplits.push(result);
-        refreshSplits();
-      });
+      const used     = liveSplits.reduce((s,p)=>s+p.amount, 0);
+      this._openSplitPicker(Math.max(0, Math.round((totalAmt-used)*100)/100), cats, null, r => { liveSplits.push(r); refreshSplits(); });
     });
 
-    const close=()=>ov.remove();
-    ov.querySelector('#ts-x').onclick=close;
-    ov.addEventListener('click',e=>{if(e.target===ov)close();});
+    const close = () => ov.remove();
+    ov.querySelector('#ts-x').onclick = close;
+    ov.addEventListener('click', e => { if(e.target===ov) close(); });
+    ov.querySelector('#ts-del')?.addEventListener('click', () => {
+      if (!confirm('Delete this charge?')) return;
+      this.deleteTx(tx.id); close(); this.toast('Charge deleted'); this._refreshView();
+    });
 
-    const delBtn=ov.querySelector('#ts-del');
-    if(delBtn){
-      delBtn.onclick=()=>{
-        if(!confirm('Delete this charge?'))return;
-        this.deleteTx(tx.id);close();this.toast('Charge deleted');this._refreshView();
-      };
-    }
-
+    // ── collectData reads from dynamic rows ──────────────────────
     const collectData = () => {
       const raw = ov.querySelector('#ts-amt').value.trim();
       const absAmount = this._evalExpr(raw);
       const amount = absAmount !== null ? (isCredit ? -absAmount : absAmount) : null;
-      const category=ov.querySelector('#ts-cat').value;
-      const date=ov.querySelector('#ts-date').value;
-      return {amount,category,date,
-        subcategory: ov.querySelector('#ts-sub').value,
-        payee: ov.querySelector('#ts-payee').value.trim(),
-        note:  ov.querySelector('#ts-note').value.trim(),
-        payment_method: ov.querySelector('#ts-payment').value || undefined,
+      const date   = ov.querySelector('#ts-date').value;
+      const selectedPlanIds = [...ov.querySelectorAll('.ts-plan-btn.plan-chip-active')].map(b=>b.dataset.pid);
+
+      // Collect category per plan (or single global)
+      const catRows = [...ov.querySelectorAll('.plan-cat-row')];
+      // Primary category = first row's selection
+      const primaryCat = catRows[0] ? catRows[0].querySelector('.plan-cat-sel')?.value : '';
+      const primarySub = catRows[0] ? catRows[0].querySelector('.plan-sub-sel')?.value  : '';
+
+      // Per-plan category map: { planId: { category, subcategory } }
+      const planCats = {};
+      catRows.forEach(row => {
+        const pid = row.dataset.plan;
+        if (pid && pid !== 'global') {
+          planCats[pid] = {
+            category:    row.querySelector('.plan-cat-sel')?.value  || '',
+            subcategory: row.querySelector('.plan-sub-sel')?.value  || '',
+          };
+        }
+      });
+
+      return {
+        amount, date,
+        category:    primaryCat,
+        subcategory: primarySub,
+        payee:          ov.querySelector('#ts-payee').value.trim(),
+        note:           ov.querySelector('#ts-note').value.trim(),
+        payment_method: ov.querySelector('#ts-payment')?.value || undefined,
+        budget_ids:     selectedPlanIds.length ? selectedPlanIds : undefined,
+        plan_cats:      Object.keys(planCats).length ? planCats : undefined,
       };
     };
 
     ov.querySelector('#ts-save').onclick=()=>{
       const d = collectData();
       if(d.amount===null||d.amount===0){this.toast('Enter a valid amount','error');return;}
-      if(!d.category){this.toast('Select a category','error');return;}
       if(!d.date){this.toast('Select a date','error');return;}
+      // When using plans, category per plan is tracked; global category is optional
+      if(!d.category && !d.plan_cats){this.toast('Select a category','error');return;}
 
       // Validate splits don't exceed total
       if (liveSplits.length > 0) {
         const splitTotal = liveSplits.reduce((s,p)=>s+p.amount,0);
-        if (splitTotal > d.amount + 0.01) {
+        if (splitTotal > Math.abs(d.amount) + 0.01) {
           this.toast('Split total exceeds charge amount','error'); return;
         }
       }
 
       const splitGroupId = liveSplits.length > 0 ? crypto.randomUUID() : undefined;
+      const planIds = d.budget_ids || [];
+
+      // Helper: build list of tx objects to save
+      // If plan_cats has entries, save one tx per plan (each with its plan's category)
+      // Otherwise save a single tx with the global category
+      const buildTxList = (baseData) => {
+        if (d.plan_cats && Object.keys(d.plan_cats).length > 0) {
+          return Object.entries(d.plan_cats).map(([pid, pc]) => ({
+            ...baseData,
+            category:    pc.category    || baseData.category || '',
+            subcategory: pc.subcategory || baseData.subcategory || '',
+            budget_ids:  [pid],
+          }));
+        }
+        return [baseData];
+      };
 
       if (isNew) {
         if (liveSplits.length > 0) {
-          // Save each split as its own real transaction
           liveSplits.forEach(sp => {
-            this.addTx({
-              ...d,
-              amount: sp.amount,
-              category: sp.category,
-              subcategory: sp.subcategory || '',
-              note: sp.note || d.note,
-              split_group: splitGroupId,
-              split_parent_payee: d.payee,
-            });
+            buildTxList({...d, amount:sp.amount, category:sp.category,
+              subcategory:sp.subcategory||'', note:sp.note||d.note,
+              split_group:splitGroupId, split_parent_payee:d.payee}).forEach(t=>this.addTx(t));
           });
-          // If there's a remainder (unallocated amount), save it under the main category
           const splitTotal = liveSplits.reduce((s,p)=>s+p.amount,0);
           const rem = Math.round((d.amount - splitTotal) * 100) / 100;
-          if (rem > 0.01) {
-            this.addTx({ ...d, amount: rem, split_group: splitGroupId });
-          }
+          if (rem > 0.01) buildTxList({...d, amount:rem, split_group:splitGroupId}).forEach(t=>this.addTx(t));
         } else {
-          this.addTx(d);
+          buildTxList(d).forEach(t=>this.addTx(t));
         }
       } else {
         if (liveSplits.length > 0) {
-          // Delete the old transaction and replace with split transactions
           this.deleteTx(tx.id);
           liveSplits.forEach(sp => {
-            this.addTx({
-              ...d,
-              amount: sp.amount,
-              category: sp.category,
-              subcategory: sp.subcategory || '',
-              note: sp.note || d.note,
-              split_group: splitGroupId,
-              split_parent_payee: d.payee,
-            });
+            buildTxList({...d, amount:sp.amount, category:sp.category,
+              subcategory:sp.subcategory||'', note:sp.note||d.note,
+              split_group:splitGroupId, split_parent_payee:d.payee}).forEach(t=>this.addTx(t));
           });
           const splitTotal = liveSplits.reduce((s,p)=>s+p.amount,0);
           const rem = Math.round((d.amount - splitTotal) * 100) / 100;
-          if (rem > 0.01) {
-            this.addTx({ ...d, amount: rem, split_group: splitGroupId });
-          }
+          if (rem > 0.01) buildTxList({...d, amount:rem, split_group:splitGroupId}).forEach(t=>this.addTx(t));
         } else {
-          this.updateTx(tx.id, d);
+          const txList = buildTxList(d);
+          if (txList.length === 1) {
+            this.updateTx(tx.id, txList[0]);
+          } else {
+            this.deleteTx(tx.id);
+            txList.forEach(t=>this.addTx(t));
+          }
         }
       }
 
@@ -4392,7 +4498,7 @@ const App = {
     const makeRecurFn = (alsoSave) => {
       const d = collectData();
       if(d.amount===null||d.amount===0){this.toast('Enter a valid amount','error');return;}
-      if(!d.category){this.toast('Select a category','error');return;}
+      if(!d.category && !d.plan_cats){this.toast('Select a category','error');return;}
       // Check not already recurring
       const existingRecur = !isNew && tx.recurring_id ? this.recurring().find(r=>r.id===tx.recurring_id) : null;
       if (existingRecur) { this.toast('Already a recurring charge — edit it in Settings → Recurring','error'); return; }
