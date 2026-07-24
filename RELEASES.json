@@ -1,5 +1,15 @@
 [
  {
+  "version": "1.33.0",
+  "date": "2026-05-16",
+  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
+  "notes": [
+    "Overview opens on default budget plan instead of All",
+    "Filter charges by budget plan — chip row above category filters on Charges tab",
+    "Budget icon badge on charge rows when viewing all budgets — legacy charges show default plan"
+  ]
+},
+ {
   "version": "1.32.0",
   "date": "2026-05-16",
   "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
