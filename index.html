@@ -808,7 +808,7 @@ input,select,textarea{font-family:inherit}
 // ============================================================
 
 // ── Version ──────────────────────────────────────────────────
-const CURRENT_VERSION = '1.32.0';
+const CURRENT_VERSION = '1.33.0';
 
 // ── Theme — apply immediately to avoid flash of wrong theme ──
 (function() {
@@ -1232,11 +1232,12 @@ const App = {
     calMonth:  new Date().getMonth() + 1,
     selCalDay: null,
     txYear:    new Date().getFullYear(),
-    txFilter:  'all',
+    txFilter:    'all',
     txSubFilter: '',
-    txSearch:  '',
+    txSearch:    '',
+    txPlanFilter: null,   // null = all plans
     editingTx: null,
-    activePlanId: null,   // null = "All" (no filter)
+    activePlanId: DB.get('defaultBudgetPlanId', null) || null,   // starts on default plan
   },
 
   // data accessors
@@ -1340,7 +1341,16 @@ const App = {
     DB.set('deletedIds', deleted);
   },
 
-  // ── Boot ────────────────────────────────────────────────────
+  // Resolve which plan(s) a charge belongs to.
+  // If tx has budget_ids → use those. Otherwise fall back to default plan for legacy charges.
+  _txPlans(tx) {
+    const plans = this.budgetPlans();
+    if (tx.budget_ids?.length) return plans.filter(p => tx.budget_ids.includes(p.id));
+    // Legacy: assign to default plan if one exists
+    const defaultId = DB.get('defaultBudgetPlanId', '');
+    const def = plans.find(p => p.id === defaultId);
+    return def ? [def] : [];
+  },
   init() {
     // Ensure defaults exist
     if (!localStorage.getItem('cats'))      DB.set('cats', DEFAULT_CATS);
@@ -2380,7 +2390,16 @@ const App = {
   _buildTransactions() {
     let txs = this.txs().filter(t => t.date && t.date.startsWith(String(this.s.txYear)));
     txs.sort((a,b) => new Date(b.date)-new Date(a.date));
-    const allCats = ['all', ...new Set(txs.map(t=>t.category).filter(Boolean))];
+    const allCats  = ['all', ...new Set(txs.map(t=>t.category).filter(Boolean))];
+    const plans    = this.budgetPlans();
+    const curPlan  = this.s.txPlanFilter;
+
+    const planChips = plans.length ? `
+      <div class="chips" id="plan-chips" style="border-bottom:.5px solid var(--border);padding-bottom:6px;">
+        <button class="chip ${!curPlan?'active':''}" data-pid="">All Budgets</button>
+        ${plans.map(p=>`<button class="chip ${curPlan===p.id?'active':''}" data-pid="${p.id}"
+          style="${curPlan===p.id?`background:${p.color};color:#fff;border-color:${p.color};`:''}">${p.icon} ${p.name}</button>`).join('')}
+      </div>` : '';
 
     const main = document.getElementById('main');
     main.innerHTML = `<div class="view">
@@ -2392,6 +2411,7 @@ const App = {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
         <input class="search-inp" id="tx-search" type="search" placeholder="Search payee, category, note, $amount…" value="${this.s.txSearch}">
       </div>
+      ${planChips}
       <div class="chips" id="chips">
         ${allCats.map(c=>`<button class="chip ${c===this.s.txFilter?'active':''}" data-cat="${c}">${c==='all'?'All':c}</button>`).join('')}
       </div>
@@ -2410,6 +2430,23 @@ const App = {
     document.getElementById('tx-yr-btn').onclick = () => this._openYearPicker('tx');
     document.getElementById('tx-search').addEventListener('input', e => {
       this.s.txSearch = e.target.value; this._renderTxList();
+    });
+
+    // Plan filter chips
+    document.querySelectorAll('#plan-chips .chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.s.txPlanFilter = btn.dataset.pid || null;
+        document.querySelectorAll('#plan-chips .chip').forEach(b => {
+          b.classList.remove('active');
+          b.style.background = ''; b.style.color = ''; b.style.borderColor = '';
+        });
+        btn.classList.add('active');
+        if (this.s.txPlanFilter) {
+          const p = plans.find(pl=>pl.id===this.s.txPlanFilter);
+          if (p) { btn.style.background=p.color; btn.style.color='#fff'; btn.style.borderColor=p.color; }
+        }
+        this._renderTxList();
+      });
     });    document.querySelectorAll('#chips .chip').forEach(btn => {
       btn.addEventListener('click', () => {
         this.s.txFilter = btn.dataset.cat;
@@ -2451,8 +2488,16 @@ const App = {
 
   _renderTxList() {
     let txs = this.txs().filter(t => t.date && t.date.startsWith(String(this.s.txYear)));
-    if (this.s.txFilter !== 'all') txs = txs.filter(t => t.category === this.s.txFilter);
-    if (this.s.txSubFilter) txs = txs.filter(t => t.subcategory === this.s.txSubFilter);
+    if (this.s.txFilter !== 'all')  txs = txs.filter(t => t.category === this.s.txFilter);
+    if (this.s.txSubFilter)         txs = txs.filter(t => t.subcategory === this.s.txSubFilter);
+    // Plan filter: match on budget_ids or fall back to default plan for legacy charges
+    if (this.s.txPlanFilter) {
+      txs = txs.filter(t => {
+        if (t.budget_ids?.length) return t.budget_ids.includes(this.s.txPlanFilter);
+        // Legacy: treat as belonging to default plan
+        return DB.get('defaultBudgetPlanId','') === this.s.txPlanFilter;
+      });
+    }
     if (this.s.txSearch) {
       const q = this.s.txSearch.trim().toLowerCase();
       // Amount/price search: supports "$45", "45", ">50", "<100", "=45.99"
@@ -2504,12 +2549,17 @@ const App = {
         const creditBadge = tx.amount < 0   ? `<span class="recur-badge" style="background:rgba(52,199,89,.1);color:var(--green);">↩️ Credit</span>` : '';
         const pm = tx.payment_method ? this.paymentMethods().find(p=>p.id===tx.payment_method) : null;
         const pmBadge = pm ? `<span class="recur-badge" style="background:rgba(0,0,0,.05);color:var(--t2);">${pm.icon}</span>` : '';
+        // Show budget plan badge only when not filtered to a specific plan
+        const txPlanList = !this.s.txPlanFilter ? this._txPlans(tx) : [];
+        const planBadge = txPlanList.map(p =>
+          `<span class="recur-badge" style="background:${p.color}18;color:${p.color};">${p.icon}</span>`
+        ).join('');
         html += `<div class="tx-swipe-wrap" data-id="${tx.id}">
           <div class="tx-swipe-del"><span style="font-size:20px;">🗑</span><span>Delete</span></div>
           <div class="tx-swipe-inner tx-item" data-id="${tx.id}">
             <div class="tx-icon" style="background:${color}18;font-size:17px;">${icon}</div>
             <div class="tx-info">
-              <div class="tx-title">${tx.payee||tx.category}${recurBadge}${splitBadge}${creditBadge}${pmBadge}</div>
+              <div class="tx-title">${tx.payee||tx.category}${recurBadge}${splitBadge}${creditBadge}${pmBadge}${planBadge}</div>
               <div class="tx-sub">${tx.payee?tx.category+(subline?' · '+subline:''):subline||'—'}</div>
             </div>
             <div class="tx-right"><div class="tx-amt" style="${tx.amount<0?'color:var(--green);':''}">${tx.amount<0?'−':''}${this._$(Math.abs(tx.amount))}</div></div>
@@ -3411,8 +3461,11 @@ const App = {
 
       document.getElementById('ob-next').onclick = () => {
         step++;
-        if (step >= steps.length) { DB.set('onboardingDone', true); this.renderView('dashboard'); }
-        else show();
+        if (step >= steps.length) {
+          DB.set('onboardingDone', true);
+          this.s.activePlanId = DB.get('defaultBudgetPlanId', null) || null;
+          this.renderView('dashboard');
+        } else show();
       };
       const skipBtn = document.getElementById('ob-skip');
       if (skipBtn) skipBtn.onclick = () => { DB.set('onboardingDone', true); this.renderView('dashboard'); };
