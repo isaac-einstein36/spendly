@@ -808,7 +808,7 @@ input,select,textarea{font-family:inherit}
 // ============================================================
 
 // ── Version ──────────────────────────────────────────────────
-const CURRENT_VERSION = '1.33.0';
+const CURRENT_VERSION = '1.34.0';
 
 // ── Theme — apply immediately to avoid flash of wrong theme ──
 (function() {
@@ -1952,7 +1952,26 @@ const App = {
         return carry;
       };
 
-      const catRows = catAnalytics.map(cat => {
+      // (catRows and pmSummaryHtml computed below after hiddenChartCats is resolved)
+
+      // Chart uses plan-filtered cats (already in catAnalytics)
+      // If no plan active, respect the per-chart hidden cats filter
+      const hiddenChartCats = this.s.activePlanId ? new Set() : new Set(DB.get('chartHiddenCats', []));
+      const activeCatsForChart = catAnalytics.filter(c =>
+        Object.values(c.monthlyData).some(v=>v>0) && !hiddenChartCats.has(c.name));
+      const allChartCats = catAnalytics.filter(c => Object.values(c.monthlyData).some(v=>v>0));
+
+      // Filtered budget = sum of only visible categories' budgets (for dotted line + hero)
+      const filteredMonthlyBudget = activeCatsForChart.reduce((s,c) => s + (c.monthlyBudget||0), 0);
+
+      // Apply hidden filter to category rows and totals
+      const visibleCatAnalytics = catAnalytics.filter(c => !hiddenChartCats.has(c.name));
+
+      // Filtered month spend (only visible cats)
+      const filteredMonthSpend = visibleCatAnalytics.reduce((s,c) => s+(c.monthlyData[month]||0), 0);
+
+      // Filtered category rows
+      const catRows = visibleCatAnalytics.map(cat => {
         const spent = cat.monthlyData[month]||0;
         const baseBudget = cat.monthlyBudget||0;
         const rolloverSurplus = getLiveRollover(cat);
@@ -1979,22 +1998,24 @@ const App = {
         </div>`;
       }).join('');
 
-      // Payment method summary for this month
-      const monthTxs = this.txs().filter(t => t.date &&
-        t.date.startsWith(`${this.s.dashYear}-${String(month).padStart(2,'0')}`));
+      // Payment method summary — filtered to visible cats only
+      const monthTxsVisible = this.txs().filter(t => {
+        if (!t.date || !t.date.startsWith(`${this.s.dashYear}-${String(month).padStart(2,'0')}`)) return false;
+        return !hiddenChartCats.has(t.category);
+      });
       const pmTotals = {};
-      monthTxs.forEach(t => {
+      monthTxsVisible.forEach(t => {
         if (!t.payment_method) return;
         pmTotals[t.payment_method] = (pmTotals[t.payment_method] || 0) + t.amount;
       });
       const pmMethods = this.paymentMethods();
       const pmEntries = Object.entries(pmTotals).sort((a,b)=>b[1]-a[1]);
-      const monthTotal = monthTxs.reduce((s,t)=>s+t.amount, 0);
+      const pmMonthTotal = monthTxsVisible.reduce((s,t)=>s+t.amount, 0);
       const pmSummaryHtml = pmEntries.length ? `
         <div class="section-lbl">By Payment Method · ${this._monthFull(month)}</div>
         <div class="group">${pmEntries.map(([id, total]) => {
           const pm = pmMethods.find(p=>p.id===id) || {icon:'💳', name:id, color:'#8B8B8B'};
-          const pct = monthTotal > 0 ? Math.round((total / monthTotal) * 100) : 0;
+          const pct = pmMonthTotal > 0 ? Math.round((total / pmMonthTotal) * 100) : 0;
           return `<div class="cat-row">
             <div class="cat-top">
               <span style="font-size:16px;line-height:1;">${pm.icon}</span>
@@ -2006,23 +2027,27 @@ const App = {
           </div>`;
         }).join('')}</div>` : '';
 
-      // Chart uses plan-filtered cats (already in catAnalytics)
-      // If no plan active, respect the per-chart hidden cats filter
-      const hiddenChartCats = this.s.activePlanId ? new Set() : new Set(DB.get('chartHiddenCats', []));
-      const activeCatsForChart = catAnalytics.filter(c =>
-        Object.values(c.monthlyData).some(v=>v>0) && !hiddenChartCats.has(c.name));
-      const allChartCats = catAnalytics.filter(c => Object.values(c.monthlyData).some(v=>v>0));
+      // Update hero with filtered spend if cats are hidden
+      if (hiddenChartCats.size > 0) {
+        const heroAmt = document.getElementById('hero-amt');
+        if (heroAmt) heroAmt.textContent = this._$(filteredMonthSpend);
+      }
+
+      const filterLabel = hiddenChartCats.size
+        ? `⚙︎ ${activeCatsForChart.length}/${allChartCats.length} categories`
+        : '⚙︎ Filter categories';
+      const filterActive = hiddenChartCats.size > 0;
 
       content.innerHTML = `
-        <div style="display:flex;align-items:center;gap:8px;padding:0 16px;">
-          <div class="section-lbl" style="padding:14px 0 6px;flex:1;">Monthly Spending · ${this.s.dashYear}</div>
-          <button id="chart-cat-filter-btn" title="Filter categories" style="font-size:12px;padding:4px 10px;border-radius:99px;background:${hiddenChartCats.size?'rgba(255,149,0,.15)':'rgba(0,0,0,.06)'};color:${hiddenChartCats.size?'var(--orange)':'var(--t2)'};font-weight:600;border:none;cursor:pointer;">
-            ⚙︎ ${hiddenChartCats.size ? `${allChartCats.length - hiddenChartCats.size}/${allChartCats.length}` : 'Filter'}
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 16px 4px;background:var(--surface2);border-radius:var(--r);margin:0 16px 8px;border:.5px solid var(--border);">
+          <button id="chart-cat-filter-btn" style="flex:1;text-align:left;font-size:13px;padding:6px 0;background:none;border:none;cursor:pointer;color:${filterActive?'var(--orange)':'var(--t2)'};font-weight:${filterActive?700:500};">
+            ${filterLabel}
           </button>
-          <button id="chart-mode-toggle" style="font-size:12px;padding:4px 10px;border-radius:99px;background:rgba(0,122,255,.1);color:var(--blue);font-weight:600;border:none;cursor:pointer;">${stackedMode?'📊 Simple':'🎨 Stacked'}</button>
+          ${filterActive ? `<span style="font-size:11px;color:var(--t3);">filters total spend, categories &amp; chart</span>` : ''}
+          <button id="chart-mode-toggle" style="flex-shrink:0;font-size:12px;padding:4px 10px;border-radius:99px;background:rgba(0,122,255,.1);color:var(--blue);font-weight:600;border:none;cursor:pointer;">${stackedMode?'📊 Simple':'🎨 Stacked'}</button>
         </div>
         <div class="group" style="margin-bottom:8px;"><div class="chart-wrap"><canvas id="monthly-chart"></canvas></div></div>
-        <div class="section-lbl">Categories · ${this._monthFull(month)}</div>
+        <div class="section-lbl">Categories · ${this._monthFull(month)}${hiddenChartCats.size?` <span style="font-size:11px;color:var(--orange);font-weight:500;">(${hiddenChartCats.size} hidden)</span>`:''}</div>
         <div class="group">${catRows||'<div style="padding:20px;text-align:center;color:var(--t3);font-size:14px;">No charges this month</div>'}</div>
         ${pmSummaryHtml}
         <div style="height:8px;"></div>`;
@@ -2115,7 +2140,7 @@ const App = {
                 })),
                 {
                   label: 'Budget',
-                  data: Array(12).fill(totalMonthlyBudget),
+                  data: Array(12).fill(filteredMonthlyBudget),
                   type: 'line',
                   borderColor: 'rgba(255,149,0,.65)',
                   borderWidth: 1.5,
@@ -2157,7 +2182,7 @@ const App = {
                 { label:'Spent', data:visibleMonthSpends,
                   backgroundColor:visibleMonthSpends.map((_,i)=>i+1===month?'rgba(0,122,255,1)':'rgba(0,122,255,0.22)'),
                   borderRadius:5, borderSkipped:false },
-                { label:'Budget', data:Array(12).fill(totalMonthlyBudget),
+                { label:'Budget', data:Array(12).fill(filteredMonthlyBudget),
                   type:'line', borderColor:'rgba(255,149,0,.55)',
                   borderWidth:1.5, borderDash:[4,3], pointRadius:0, fill:false }
               ]
