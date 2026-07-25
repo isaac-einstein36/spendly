@@ -1,5 +1,14 @@
 [
  {
+  "version": "1.34.0",
+  "date": "2026-05-17",
+  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
+  "notes": [
+    "Category filter moved to top of monthly tab — now filters hero total, category rows, chart, and payment summary",
+    "Budget dotted line adjusts to show only filtered categories' combined budget"
+  ]
+},
+ {
   "version": "1.33.0",
   "date": "2026-05-16",
   "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
