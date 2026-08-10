@@ -810,7 +810,7 @@ input,select,textarea{font-family:inherit}
 // ============================================================
 
 // ── Version ──────────────────────────────────────────────────
-const CURRENT_VERSION = '1.36.0';
+const CURRENT_VERSION = '1.36.1';
 
 // ── Theme — apply immediately to avoid flash of wrong theme ──
 (function() {
@@ -2068,11 +2068,16 @@ const App = {
         const pop = document.createElement('div');
         pop.id = 'chart-cat-popover';
         pop.style.cssText = `position:fixed;z-index:350;background:var(--surface);border:.5px solid var(--border2);border-radius:var(--r);box-shadow:0 4px 20px rgba(0,0,0,.15);padding:8px 0;min-width:200px;max-height:320px;overflow-y:auto;`;
-        // Position below the button
+        // Position below the button, flush to left edge of content with safe margins
         const btn = document.getElementById('chart-cat-filter-btn');
         const rect = btn.getBoundingClientRect();
-        pop.style.top  = (rect.bottom + 6) + 'px';
-        pop.style.right = (window.innerWidth - rect.right) + 'px';
+        const popWidth = Math.min(window.innerWidth - 32, 280); // max width with 16px margins each side
+        pop.style.width  = popWidth + 'px';
+        pop.style.top    = (rect.bottom + 6) + 'px';
+        // Align to left of button, but clamp so it doesn't overflow right edge
+        const idealLeft  = rect.left;
+        const clampedLeft = Math.min(idealLeft, window.innerWidth - popWidth - 16);
+        pop.style.left   = Math.max(16, clampedLeft) + 'px';
 
         // All/None row
         pop.innerHTML = `<div style="display:flex;gap:0;border-bottom:.5px solid var(--border);margin-bottom:4px;">
