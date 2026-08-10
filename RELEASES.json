@@ -1,4 +1,13 @@
 [
+  {
+  "version": "1.36.1",
+  "date": "2026-08-09",
+  "url": "https://raw.githubusercontent.com/isaac-einstein36/spendly/main/index.html",
+  "notes": [
+   "Adjusted app icon",
+   "Fixed category filter"
+ ]
+},
  {
   "version": "1.35.0",
   "date": "2026-05-17",
